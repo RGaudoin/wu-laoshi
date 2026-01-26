@@ -1447,3 +1447,575 @@ let quizEntries = [];
                 });
             }
         });
+
+        // ===== TONE PRACTICE =====
+
+        let tonePracticeState = {
+            current: null,      // Current question data
+            index: 0,           // Current question index
+            total: 0,           // Total questions
+            correct: 0,         // Correct answers
+            wrong: 0,           // Wrong answers
+            answered: false     // Whether current question is answered
+        };
+
+        function showTonesSubTab(tabId) {
+            // Update sub-tab buttons
+            const container = document.getElementById('learn-tones');
+            container.querySelectorAll('.sub-tabs .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            // Show sub-tab content
+            container.querySelectorAll('.tones-subtab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tones-' + tabId).classList.add('active');
+
+            // Initialize chart if needed
+            if (tabId === 'chart' && !document.getElementById('pinyin-chart').children.length) {
+                renderPinyinChart();
+            }
+        }
+
+        function startTonePractice() {
+            const count = parseInt(document.getElementById('tone-practice-count').value);
+
+            // Reset state
+            tonePracticeState = {
+                current: null,
+                index: 0,
+                total: count || 999,  // 0 = unlimited
+                correct: 0,
+                wrong: 0,
+                answered: false
+            };
+
+            // Show practice area, hide completion
+            document.getElementById('tone-practice-area').style.display = 'block';
+            document.getElementById('tone-practice-complete').style.display = 'none';
+
+            // Load first question
+            loadTonePracticeQuestion();
+        }
+
+        function loadTonePracticeQuestion() {
+            const mode = document.getElementById('tone-practice-mode').value;
+            const initial = document.getElementById('tone-practice-initial').value;
+            const tones = document.getElementById('tone-practice-tones').value;
+
+            const params = new URLSearchParams({
+                mode: mode,
+                initial: initial,
+                tones: tones,
+                weighted: 'true'
+            });
+
+            fetch('/api/tone_practice/question?' + params)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error: ' + data.error);
+                        return;
+                    }
+
+                    tonePracticeState.current = data;
+                    tonePracticeState.answered = false;
+                    tonePracticeState.index++;
+
+                    renderTonePracticeQuestion(data);
+                })
+                .catch(err => console.error('Failed to load question:', err));
+        }
+
+        function renderTonePracticeQuestion(data) {
+            // Update hint based on what's revealed
+            const hintEl = document.getElementById('tone-practice-hint');
+            const questionEl = document.getElementById('tone-practice-question');
+
+            let hintHtml = '';
+            if (data.reveal.syllable) {
+                hintHtml = `<span class="pinyin">${data.reveal.syllable}</span>`;
+            } else if (data.reveal.tone !== undefined) {
+                const toneMarker = ['‾', '/', 'ˇ', '\\'][data.reveal.tone - 1] || '';
+                hintHtml = `<span class="tone-number">Tone ${data.reveal.tone}</span>`;
+                if (data.reveal.final) {
+                    hintHtml += ` <span class="final-hint">-${data.reveal.final}</span>`;
+                }
+            } else if (data.ask === 'full') {
+                hintHtml = '🔊';
+            }
+            hintEl.innerHTML = hintHtml || '🔊';
+
+            // Update question text
+            if (data.ask === 'tone') {
+                questionEl.textContent = 'Which tone did you hear?';
+            } else if (data.ask === 'syllable') {
+                questionEl.textContent = 'Which syllable did you hear?';
+            } else if (data.ask === 'initial') {
+                questionEl.textContent = 'Which initial consonant did you hear?';
+            } else if (data.ask === 'full') {
+                questionEl.textContent = 'Type what you heard (e.g., ma3):';
+            }
+
+            // Render options
+            const optionsEl = document.getElementById('tone-practice-options');
+            optionsEl.innerHTML = '';
+
+            if (data.ask === 'full') {
+                // Text input for full recognition
+                optionsEl.innerHTML = `
+                    <div class="tone-practice-input">
+                        <input type="text" id="tone-practice-text-input" placeholder="e.g., ma3" autocomplete="off">
+                        <button onclick="submitTonePracticeText()">Submit</button>
+                    </div>`;
+                // Focus and add enter key listener
+                setTimeout(() => {
+                    const input = document.getElementById('tone-practice-text-input');
+                    if (input) {
+                        input.focus();
+                        input.onkeypress = (e) => {
+                            if (e.key === 'Enter') submitTonePracticeText();
+                        };
+                    }
+                }, 100);
+            } else if (data.ask === 'tone') {
+                // Tone buttons
+                for (const opt of data.options) {
+                    const btn = document.createElement('button');
+                    btn.className = 'tone-option-btn';
+                    btn.innerHTML = `<span class="tone-num">${opt}</span><span class="tone-mark">${['‾', '/', 'ˇ', '\\'][opt - 1] || ''}</span>`;
+                    btn.onclick = () => checkTonePracticeAnswer(opt);
+                    optionsEl.appendChild(btn);
+                }
+            } else {
+                // Syllable or initial buttons
+                for (const opt of data.options) {
+                    const btn = document.createElement('button');
+                    btn.className = 'tone-option-btn syllable-btn';
+                    btn.textContent = opt || '(none)';
+                    btn.onclick = () => checkTonePracticeAnswer(opt);
+                    optionsEl.appendChild(btn);
+                }
+            }
+
+            // Clear feedback
+            const feedbackEl = document.getElementById('tone-practice-feedback');
+            feedbackEl.textContent = '';
+            feedbackEl.className = 'tone-practice-feedback';
+
+            // Hide controls until answered
+            document.getElementById('tone-practice-controls').style.display = 'none';
+
+            // Update score
+            updateTonePracticeScore();
+
+            // Auto-play audio
+            playTonePracticeAudio();
+        }
+
+        function playTonePracticeAudio() {
+            if (!tonePracticeState.current) return;
+
+            const { syllable, tone } = tonePracticeState.current;
+            fetch(`/api/tone_audio?pinyin=${encodeURIComponent(syllable)}&tone=${tone}`)
+                .then(r => r.blob())
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    new Audio(url).play();
+                })
+                .catch(err => console.error('Audio playback failed:', err));
+        }
+
+        function submitTonePracticeText() {
+            const input = document.getElementById('tone-practice-text-input');
+            if (input && input.value.trim()) {
+                checkTonePracticeAnswer(input.value.trim());
+            }
+        }
+
+        function checkTonePracticeAnswer(answer) {
+            if (tonePracticeState.answered || !tonePracticeState.current) return;
+            tonePracticeState.answered = true;
+
+            const data = tonePracticeState.current;
+
+            fetch('/api/tone_practice/answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    syllable: data.syllable,
+                    tone: data.tone,
+                    answer: answer,
+                    ask: data.ask
+                })
+            })
+            .then(r => r.json())
+            .then(result => {
+                const feedbackEl = document.getElementById('tone-practice-feedback');
+                const optionsEl = document.getElementById('tone-practice-options');
+
+                if (result.correct) {
+                    tonePracticeState.correct++;
+                    feedbackEl.textContent = '✓ Correct!';
+                    feedbackEl.className = 'tone-practice-feedback correct';
+                } else {
+                    tonePracticeState.wrong++;
+                    const tonedPinyin = addToneMark(data.syllable, data.tone);
+                    feedbackEl.innerHTML = `✗ Wrong. The answer was: <strong>${tonedPinyin}</strong> (${data.syllable}${data.tone})`;
+                    feedbackEl.className = 'tone-practice-feedback wrong';
+                }
+
+                // Mark correct/wrong on buttons
+                if (data.ask !== 'full') {
+                    optionsEl.querySelectorAll('.tone-option-btn').forEach(btn => {
+                        const btnValue = data.ask === 'tone'
+                            ? parseInt(btn.querySelector('.tone-num')?.textContent || btn.textContent)
+                            : btn.textContent === '(none)' ? '' : btn.textContent;
+
+                        if (btnValue === result.correctAnswer || btnValue === String(result.correctAnswer)) {
+                            btn.classList.add('correct');
+                        } else if (btnValue === answer || btnValue === String(answer)) {
+                            btn.classList.add('wrong');
+                        }
+                    });
+                }
+
+                // Show controls
+                document.getElementById('tone-practice-controls').style.display = 'flex';
+
+                // Update score
+                updateTonePracticeScore();
+            })
+            .catch(err => console.error('Failed to submit answer:', err));
+        }
+
+        function updateTonePracticeScore() {
+            const total = tonePracticeState.correct + tonePracticeState.wrong;
+            const scoreEl = document.getElementById('tone-practice-score');
+            if (tonePracticeState.total > 0 && tonePracticeState.total < 999) {
+                scoreEl.textContent = `Question ${tonePracticeState.index}/${tonePracticeState.total} · Score: ${tonePracticeState.correct}/${total}`;
+            } else {
+                scoreEl.textContent = `Question ${tonePracticeState.index} · Score: ${tonePracticeState.correct}/${total}`;
+            }
+        }
+
+        function nextTonePractice() {
+            // Check if practice is complete
+            if (tonePracticeState.total > 0 &&
+                tonePracticeState.total < 999 &&
+                tonePracticeState.index >= tonePracticeState.total) {
+                showTonePracticeComplete();
+                return;
+            }
+
+            loadTonePracticeQuestion();
+        }
+
+        function showTonePracticeComplete() {
+            document.getElementById('tone-practice-area').style.display = 'none';
+            document.getElementById('tone-practice-complete').style.display = 'block';
+
+            const summaryEl = document.getElementById('tone-practice-summary');
+            const total = tonePracticeState.correct + tonePracticeState.wrong;
+            const percentage = total > 0 ? Math.round((tonePracticeState.correct / total) * 100) : 0;
+
+            summaryEl.innerHTML = `
+                <p>You got <span class="stat-correct">${tonePracticeState.correct}</span> correct and
+                <span class="stat-wrong">${tonePracticeState.wrong}</span> wrong.</p>
+                <p>Accuracy: <strong>${percentage}%</strong></p>
+            `;
+        }
+
+        function showToneReference() {
+            if (!tonePracticeState.current) return;
+
+            const syllable = tonePracticeState.current.syllable;
+            const feedbackEl = document.getElementById('tone-practice-feedback');
+
+            // Add reference buttons below feedback
+            let refHtml = feedbackEl.innerHTML;
+            refHtml += `
+                <div class="tone-reference">
+                    <span style="color: #666; font-size: 14px; margin-right: 10px;">Compare:</span>
+            `;
+
+            for (let t = 1; t <= 4; t++) {
+                const isCorrect = t === tonePracticeState.current.tone;
+                const highlight = isCorrect ? ' highlight' : '';
+                refHtml += `<button class="tone-reference-btn${highlight}" onclick="playToneReferenceAudio('${syllable}', ${t})">${addToneMark(syllable, t)}</button>`;
+            }
+            refHtml += '</div>';
+
+            feedbackEl.innerHTML = refHtml;
+        }
+
+        function playToneReferenceAudio(syllable, tone) {
+            fetch(`/api/tone_audio?pinyin=${encodeURIComponent(syllable)}&tone=${tone}`)
+                .then(r => r.blob())
+                .then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    new Audio(url).play();
+                })
+                .catch(err => console.error('Reference audio failed:', err));
+        }
+
+        // ===== IMPORT =====
+
+        let importPreviewData = null;
+
+        function refreshImportLessons() {
+            fetch('/api/import/lessons')
+                .then(r => r.json())
+                .then(data => {
+                    const dropdown = document.getElementById('import-lesson-dropdown');
+                    dropdown.innerHTML = '<option value="">-- Select a folder --</option>';
+
+                    if (data.lessons && data.lessons.length > 0) {
+                        // Group by textbook if multiple sources
+                        const byTextbook = {};
+                        data.lessons.forEach(lesson => {
+                            const tb = lesson.textbook || 'Unknown Source';
+                            if (!byTextbook[tb]) byTextbook[tb] = [];
+                            byTextbook[tb].push(lesson);
+                        });
+
+                        const textbooks = Object.keys(byTextbook);
+                        if (textbooks.length > 1) {
+                            // Multiple textbooks - use optgroups
+                            textbooks.forEach(tb => {
+                                const group = document.createElement('optgroup');
+                                group.label = tb;
+                                byTextbook[tb].forEach(lesson => {
+                                    const opt = document.createElement('option');
+                                    opt.value = lesson.id;
+                                    opt.textContent = `${lesson.display} (${lesson.vocab_count} vocab)`;
+                                    if (lesson.error) opt.disabled = true;
+                                    group.appendChild(opt);
+                                });
+                                dropdown.appendChild(group);
+                            });
+                        } else {
+                            // Single textbook - flat list
+                            data.lessons.forEach(lesson => {
+                                const opt = document.createElement('option');
+                                opt.value = lesson.id;
+                                opt.textContent = `${lesson.display} (${lesson.vocab_count} vocab)`;
+                                if (lesson.error) opt.disabled = true;
+                                dropdown.appendChild(opt);
+                            });
+                        }
+                        document.getElementById('import-no-lessons').style.display = 'none';
+                    } else {
+                        document.getElementById('import-no-lessons').style.display = 'block';
+                    }
+                    document.getElementById('import-preview').style.display = 'none';
+                })
+                .catch(err => console.error('Failed to load lessons:', err));
+        }
+
+        function loadImportPreview() {
+            const lessonId = document.getElementById('import-lesson-dropdown').value;
+
+            if (!lessonId) {
+                document.getElementById('import-preview').style.display = 'none';
+                return;
+            }
+
+            fetch(`/api/import/preview?lesson=${encodeURIComponent(lessonId)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert('Error: ' + data.error);
+                        return;
+                    }
+
+                    importPreviewData = data;
+                    renderImportPreview(data);
+                    document.getElementById('import-preview').style.display = 'block';
+                })
+                .catch(err => console.error('Failed to load preview:', err));
+        }
+
+        function renderImportPreview(data) {
+            // Source info
+            const sourceEl = document.getElementById('import-source-info');
+            const source = data.source || {};
+
+            let sourceHtml = '';
+            if (source.textbook) {
+                sourceHtml += `<div style="font-size: 13px; color: #666; margin-bottom: 5px;">📚 ${source.textbook}</div>`;
+            }
+            sourceHtml += `<strong>Lesson ${source.lesson || '?'}</strong>: ${source.title || 'Untitled'}`;
+            sourceHtml += `<br><small style="color: #888;">Extracted: ${source.extracted_date || 'Unknown'} via ${source.extracted_by || 'unknown'}</small>`;
+
+            // Show what content is available
+            const features = [];
+            if (data.dialogues?.length) features.push(`${data.dialogues.length} dialogue(s)`);
+            if (data.grammar_patterns?.length) features.push(`${data.grammar_patterns.length} grammar pattern(s)`);
+            if (features.length) {
+                sourceHtml += `<br><small style="color: #2196F3;">Also includes: ${features.join(', ')}</small>`;
+            }
+
+            sourceEl.innerHTML = sourceHtml;
+
+            // Summary
+            const summaryEl = document.getElementById('import-summary');
+            const s = data.summary || {};
+            summaryEl.innerHTML = `
+                <span style="color: #4CAF50;">● ${s.new || 0} new</span> ·
+                <span style="color: #8BC34A;">● ${s.sandhi || 0} sandhi</span> ·
+                <span style="color: #FF9800;">● ${s.new_not_in_dict || 0} not in dict</span> ·
+                <span style="color: #f44336;">● ${s.conflict || 0} conflicts</span> ·
+                <span style="color: #999;">● ${s.duplicate || 0} duplicates</span>
+            `;
+
+            // Items list
+            const listEl = document.getElementById('import-items-list');
+            listEl.innerHTML = '';
+
+            (data.items || []).forEach((item, i) => {
+                const row = document.createElement('div');
+                row.className = 'import-item';
+                row.dataset.index = i;
+
+                let statusBadge = '';
+                let statusColor = '#4CAF50';
+                let canSelect = true;
+
+                switch (item.status) {
+                    case 'new':
+                        statusBadge = 'NEW';
+                        break;
+                    case 'sandhi':
+                        statusBadge = 'NEW (sandhi)';
+                        statusColor = '#8BC34A';  // Light green - recognised sandhi
+                        break;
+                    case 'new_not_in_dict':
+                        statusBadge = 'NEW (not in dict)';
+                        statusColor = '#FF9800';
+                        break;
+                    case 'conflict':
+                        statusBadge = 'CONFLICT';
+                        statusColor = '#f44336';
+                        break;
+                    case 'duplicate':
+                        statusBadge = 'DUPLICATE';
+                        statusColor = '#999';
+                        canSelect = false;
+                        break;
+                }
+
+                let extraInfo = '';
+                if (item.status === 'conflict') {
+                    // Show pypinyin (reliable) as reference; dict_pinyin may have rare/alternate reading
+                    const expectedPinyin = item.pypinyin || item.dict_pinyin;
+                    extraInfo = `
+                        <div style="font-size: 12px; margin-top: 5px; padding: 8px; background: #fff3e0; border-radius: 4px;">
+                            <strong>Expected:</strong> ${expectedPinyin}
+                            <br>
+                            <label style="margin-top: 5px; display: block;">
+                                <input type="checkbox" class="use-dict-checkbox" data-index="${i}">
+                                Use expected pinyin instead
+                            </label>
+                        </div>
+                    `;
+                } else if (item.status === 'sandhi' && item.note) {
+                    extraInfo = `
+                        <div style="font-size: 12px; margin-top: 5px; padding: 8px; background: #e8f5e9; border-radius: 4px;">
+                            <em>${item.note}</em> — Citation form: ${item.dict_pinyin}
+                        </div>
+                    `;
+                }
+
+                row.innerHTML = `
+                    <div style="display: flex; align-items: flex-start; padding: 12px; border-bottom: 1px solid #eee; ${!canSelect ? 'opacity: 0.5;' : ''}">
+                        <input type="checkbox" class="import-checkbox" data-index="${i}" ${canSelect ? '' : 'disabled'} ${canSelect && item.status !== 'conflict' ? 'checked' : ''} onchange="updateImportCount()" style="margin-right: 12px; margin-top: 4px;">
+                        <div style="flex: 1;">
+                            <span class="chinese" style="font-size: 20px;">${item.characters}</span>
+                            <span class="pinyin" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
+                            <span style="margin-left: 15px; color: #666;">${item.english}</span>
+                            <span style="float: right; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: ${statusColor}; color: white;">${statusBadge}</span>
+                            ${extraInfo}
+                        </div>
+                    </div>
+                `;
+
+                listEl.appendChild(row);
+            });
+
+            updateImportCount();
+        }
+
+        function selectAllImport(selectNew) {
+            const checkboxes = document.querySelectorAll('.import-checkbox:not([disabled])');
+            checkboxes.forEach(cb => {
+                if (selectNew) {
+                    const idx = parseInt(cb.dataset.index);
+                    const item = importPreviewData?.items?.[idx];
+                    cb.checked = item && (item.status === 'new' || item.status === 'sandhi' || item.status === 'new_not_in_dict');
+                } else {
+                    cb.checked = false;
+                }
+            });
+            updateImportCount();
+        }
+
+        function updateImportCount() {
+            const count = document.querySelectorAll('.import-checkbox:checked').length;
+            document.getElementById('import-selected-count').textContent = count;
+        }
+
+        function confirmImport() {
+            if (!importPreviewData) return;
+
+            const selectedItems = [];
+            document.querySelectorAll('.import-checkbox:checked').forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                const item = { ...importPreviewData.items[idx] };
+
+                // Check if user wants to use dictionary pinyin for conflicts
+                const useDictCb = document.querySelector(`.use-dict-checkbox[data-index="${idx}"]`);
+                if (useDictCb && useDictCb.checked) {
+                    item.use_dictionary = true;
+                }
+
+                selectedItems.push(item);
+            });
+
+            if (selectedItems.length === 0) {
+                alert('No items selected for import.');
+                return;
+            }
+
+            if (!confirm(`Import ${selectedItems.length} vocabulary items?`)) {
+                return;
+            }
+
+            fetch('/api/import/confirm', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ items: selectedItems })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+
+                alert(`Successfully imported ${data.imported} items.\n${data.skipped} skipped (duplicates).`);
+
+                // Reload preview to update statuses
+                loadImportPreview();
+            })
+            .catch(err => {
+                console.error('Import failed:', err);
+                alert('Import failed: ' + err);
+            });
+        }
+
+        // Load import lessons when section is shown
+        document.addEventListener('DOMContentLoaded', () => {
+            const importNav = document.querySelector('[onclick*="showSection(\'import\')"]');
+            if (importNav) {
+                importNav.addEventListener('click', refreshImportLessons);
+            }
+        });

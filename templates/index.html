@@ -100,25 +100,100 @@
 
         <!-- TONES TAB -->
         <div id="learn-tones" class="tab-content">
-            <div style="margin-bottom: 15px;">
-                <p style="color: #666; margin: 0;">Click any syllable to hear all 4 tones. The grid shows valid Mandarin pinyin combinations.</p>
+            <!-- Tones sub-tabs -->
+            <div class="tabs sub-tabs">
+                <button class="tab active" onclick="showTonesSubTab('chart')">Chart</button>
+                <button class="tab" onclick="showTonesSubTab('practice')">Practice</button>
             </div>
-            <div class="pinyin-chart-controls" style="margin-bottom: 15px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
-                <label>Initial group:
-                    <select id="tones-initial-filter" onchange="filterPinyinChart()">
-                        <option value="all">All</option>
-                        <option value="none">(none) - vowels only</option>
-                        <option value="labial">Labials (b p m f)</option>
-                        <option value="alveolar">Alveolars (d t n l)</option>
-                        <option value="velar">Velars (g k h)</option>
-                        <option value="palatal">Palatals (j q x)</option>
-                        <option value="retroflex">Retroflexes (zh ch sh r)</option>
-                        <option value="dental">Dentals (z c s)</option>
-                        <option value="semivowel">Semivowels (y w)</option>
-                    </select>
-                </label>
+
+            <!-- CHART SUB-TAB -->
+            <div id="tones-chart" class="tones-subtab active">
+                <div style="margin-bottom: 15px;">
+                    <p style="color: #666; margin: 0;">Click any syllable to hear all 4 tones. The grid shows valid Mandarin pinyin combinations.</p>
+                </div>
+                <div class="pinyin-chart-controls" style="margin-bottom: 15px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                    <label>Initial group:
+                        <select id="tones-initial-filter" onchange="filterPinyinChart()">
+                            <option value="all">All</option>
+                            <option value="none">(none) - vowels only</option>
+                            <option value="labial">Labials (b p m f)</option>
+                            <option value="alveolar">Alveolars (d t n l)</option>
+                            <option value="velar">Velars (g k h)</option>
+                            <option value="palatal">Palatals (j q x)</option>
+                            <option value="retroflex">Retroflexes (zh ch sh r)</option>
+                            <option value="dental">Dentals (z c s)</option>
+                            <option value="semivowel">Semivowels (y w)</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="pinyin-chart" class="pinyin-chart"></div>
             </div>
-            <div id="pinyin-chart" class="pinyin-chart"></div>
+
+            <!-- PRACTICE SUB-TAB -->
+            <div id="tones-practice" class="tones-subtab">
+                <div class="tone-practice-settings">
+                    <label>Mode:
+                        <select id="tone-practice-mode">
+                            <option value="tone_id">Identify Tone (syllable shown)</option>
+                            <option value="syllable_id">Identify Syllable (tone shown)</option>
+                            <option value="initial_id">Identify Initial (zh/sh/ch...)</option>
+                            <option value="full_id">Full Recognition</option>
+                        </select>
+                    </label>
+                    <label>Initial:
+                        <select id="tone-practice-initial">
+                            <option value="all">All</option>
+                            <option value="none">Vowels only</option>
+                            <option value="labial">Labials (b p m f)</option>
+                            <option value="alveolar">Alveolars (d t n l)</option>
+                            <option value="velar">Velars (g k h)</option>
+                            <option value="palatal">Palatals (j q x)</option>
+                            <option value="retroflex">Retroflexes (zh ch sh r)</option>
+                            <option value="dental">Dentals (z c s)</option>
+                        </select>
+                    </label>
+                    <label>Tones:
+                        <select id="tone-practice-tones">
+                            <option value="all">All (1-4)</option>
+                            <option value="1,2">1 & 2</option>
+                            <option value="2,3">2 & 3 (hardest)</option>
+                            <option value="3,4">3 & 4</option>
+                            <option value="1,4">1 & 4</option>
+                        </select>
+                    </label>
+                    <label>Count:
+                        <select id="tone-practice-count">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="0">Unlimited</option>
+                        </select>
+                    </label>
+                    <button onclick="startTonePractice()">Start</button>
+                </div>
+
+                <div id="tone-practice-area" class="tone-practice-area" style="display: none;">
+                    <div id="tone-practice-hint" class="tone-practice-hint"></div>
+                    <div class="tone-practice-play">
+                        <button class="audio-btn tone-play-btn" onclick="playTonePracticeAudio()">🔊 Play</button>
+                    </div>
+                    <div id="tone-practice-question" class="tone-practice-question">Which tone did you hear?</div>
+                    <div id="tone-practice-options" class="tone-practice-options"></div>
+                    <div id="tone-practice-feedback" class="tone-practice-feedback"></div>
+                    <div id="tone-practice-controls" class="tone-practice-controls" style="display: none;">
+                        <button class="secondary" onclick="playTonePracticeAudio()">🔊 Replay</button>
+                        <button class="secondary" onclick="showToneReference()">📖 Reference</button>
+                        <button onclick="nextTonePractice()">Next →</button>
+                    </div>
+                    <div id="tone-practice-score" class="score"></div>
+                </div>
+
+                <div id="tone-practice-complete" class="tone-practice-complete" style="display: none;">
+                    <h3>Practice Complete!</h3>
+                    <div id="tone-practice-summary"></div>
+                    <button onclick="startTonePractice()">Practice Again</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -179,8 +254,51 @@
     <div id="section-import" class="section">
         <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
             <h2>Import Course Materials</h2>
-            <p style="color: #666;">Upload images or PDFs of your course materials to extract vocabulary and exercises.</p>
-            <p style="color: #999; font-style: italic;">Coming soon - requires Claude API configuration in Settings.</p>
+            <p style="color: #666; margin-bottom: 20px;">Import vocabulary from extracted lesson files.</p>
+
+            <!-- Lesson selector -->
+            <div id="import-lesson-select" style="margin-bottom: 20px;">
+                <label style="font-weight: bold;">Available Lessons:</label>
+                <select id="import-lesson-dropdown" onchange="loadImportPreview()" style="margin-left: 10px; padding: 8px; font-size: 16px;">
+                    <option value="">-- Select a lesson --</option>
+                </select>
+                <button onclick="refreshImportLessons()" style="margin-left: 10px; padding: 8px 15px;">↻ Refresh</button>
+            </div>
+
+            <!-- Preview area -->
+            <div id="import-preview" style="display: none;">
+                <!-- Source info -->
+                <div id="import-source-info" style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                </div>
+
+                <!-- Summary -->
+                <div id="import-summary" style="margin-bottom: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                </div>
+
+                <!-- Items list -->
+                <div id="import-items-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <strong>Vocabulary Items</strong>
+                    <div>
+                        <button onclick="selectAllImport(true)" style="padding: 5px 10px; font-size: 14px;">Select All New</button>
+                        <button onclick="selectAllImport(false)" style="padding: 5px 10px; font-size: 14px;">Deselect All</button>
+                    </div>
+                </div>
+                <div id="import-items-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px;">
+                </div>
+
+                <!-- Import button -->
+                <div style="margin-top: 20px; text-align: center;">
+                    <button id="import-confirm-btn" onclick="confirmImport()" style="padding: 12px 30px; font-size: 18px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Import Selected (<span id="import-selected-count">0</span>)
+                    </button>
+                </div>
+            </div>
+
+            <!-- No lessons message -->
+            <div id="import-no-lessons" style="display: none; color: #666; padding: 20px; text-align: center;">
+                <p>No extracted lessons found.</p>
+                <p style="font-size: 14px;">Place extracted JSON files in <code>data/import/lesson_N/extracted.json</code></p>
+            </div>
         </div>
     </div>
 
