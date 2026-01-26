@@ -5,7 +5,9 @@ __pycache__/
 .eggs/
 
 # Data (user-specific vocabulary and generated files)
-data/
+data/vocabulary.json
+data/config.json
+data/cedict.txt
 audio/
 
 # IDE
