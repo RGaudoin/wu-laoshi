@@ -26,7 +26,7 @@ BY_PINYIN, BY_CHARS = load_cedict()
 print(f"Dictionary loaded: {len(BY_CHARS)} entries")
 print(f"Vocabulary: {len(load_vocab())} entries")
 
-HTML_TEMPLATE = '''
+HTML_TEMPLATE = r'''
 <!DOCTYPE html>
 <html>
 <head>
@@ -273,7 +273,7 @@ HTML_TEMPLATE = '''
     <!-- Main Navigation -->
     <nav class="main-nav">
         <button class="nav-btn active" onclick="showSection('home')">Home</button>
-        <button class="nav-btn" onclick="showSection('study')">Study</button>
+        <button class="nav-btn" onclick="showSection('learn')">Learn</button>
         <button class="nav-btn" onclick="showSection('vocabulary')">Vocabulary</button>
         <button class="nav-btn" onclick="showSection('import')">Import</button>
         <button class="nav-btn settings-btn" onclick="openSettings()">⚙️</button>
@@ -282,8 +282,8 @@ HTML_TEMPLATE = '''
     <!-- HOME SECTION -->
     <div id="section-home" class="section active">
         <div class="home-cards">
-            <div class="home-card" onclick="showSection('study')">
-                <h3>📝 Study</h3>
+            <div class="home-card" onclick="showSection('learn')">
+                <h3>📝 Learn</h3>
                 <p>Quiz yourself on vocabulary</p>
             </div>
             <div class="home-card" onclick="showSection('vocabulary')">
@@ -297,15 +297,15 @@ HTML_TEMPLATE = '''
         </div>
     </div>
 
-    <!-- STUDY SECTION -->
-    <div id="section-study" class="section">
+    <!-- LEARN SECTION -->
+    <div id="section-learn" class="section">
         <div class="tabs">
-            <button class="tab active" onclick="showSubTab('study', 'quiz')">Quiz</button>
-            <!-- Future: Practice tab -->
+            <button class="tab active" onclick="showSubTab('learn', 'quiz')">Quiz</button>
+            <!-- Future: Tones, Conversation tabs -->
         </div>
 
         <!-- QUIZ TAB -->
-        <div id="study-quiz" class="tab-content active">
+        <div id="learn-quiz" class="tab-content active">
             <div id="quiz-stats-summary" style="background: #f0f0f0; padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; color: #666; font-size: 14px;"></div>
             <div class="settings">
                 <label>Show:
@@ -339,6 +339,7 @@ HTML_TEMPLATE = '''
                     </select>
                 </label>
                 <label><input type="checkbox" id="quiz-focus-only"> Focus only</label>
+                <label>Tag: <select id="quiz-tag-filter"><option value="">All</option></select></label>
                 <label><input type="checkbox" id="quiz-require-tones"> Require tones</label>
                 <button onclick="startQuiz()">Start Quiz</button>
             </div>
@@ -402,7 +403,10 @@ HTML_TEMPLATE = '''
 
         <!-- LIST TAB -->
         <div id="vocabulary-list" class="tab-content">
-            <label><input type="checkbox" id="show-stats" onchange="refreshList()"> Show quiz stats</label>
+            <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                <label><input type="checkbox" id="show-stats" onchange="refreshList()"> Show quiz stats</label>
+                <label>Tag: <select id="list-tag-filter" onchange="refreshList()"><option value="">All</option></select></label>
+            </div>
             <div id="list-count"></div>
             <div id="vocab-list"></div>
         </div>
@@ -495,6 +499,10 @@ HTML_TEMPLATE = '''
                 </div>
                 <div id="edit-pinyin-options" style="margin-top: 8px;"></div>
             </div>
+            <div style="margin-bottom: 15px;">
+                <label><strong>Tags</strong></label>
+                <input type="text" id="edit-tags" placeholder="comma-separated, e.g. lesson1, greetings" style="width: 100%; margin-top: 5px;">
+            </div>
             <div style="margin-bottom: 15px;" id="edit-audio-container"></div>
             <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
             <div style="display: flex; gap: 10px; justify-content: space-between;">
@@ -509,6 +517,7 @@ HTML_TEMPLATE = '''
 
     <script>
         let quizEntries = [];
+        let quizAllEntries = [];  // Full vocab for duplicate matching (not limited by count)
         let quizIndex = 0;
         let quizCorrect = 0;
         let quizTotal = 0;
@@ -644,7 +653,7 @@ HTML_TEMPLATE = '''
 
             // Load data for specific sections
             if (sectionId === 'home') loadHomeStats();
-            if (sectionId === 'study') loadQuizStats();
+            if (sectionId === 'learn') loadQuizStats();
             if (sectionId === 'vocabulary') {
                 // Check which tab is active and load its data
                 const activeTab = document.querySelector('#section-vocabulary .tab-content.active');
@@ -716,6 +725,27 @@ HTML_TEMPLATE = '''
                 .catch(err => console.error('Failed to load settings:', err));
         }
 
+        function loadTags() {
+            fetch('/api/tags')
+                .then(r => r.json())
+                .then(data => {
+                    const tags = data.tags || [];
+                    // Populate tag filter dropdowns
+                    ['list-tag-filter', 'quiz-tag-filter'].forEach(id => {
+                        const select = document.getElementById(id);
+                        if (select) {
+                            const currentVal = select.value;
+                            select.innerHTML = '<option value="">All</option>';
+                            tags.forEach(tag => {
+                                select.innerHTML += `<option value="${tag}">${tag}</option>`;
+                            });
+                            select.value = currentVal; // Preserve selection
+                        }
+                    });
+                })
+                .catch(err => console.error('Failed to load tags:', err));
+        }
+
         function saveSettings() {
             quizSettings = {
                 wrongWeight: parseFloat(document.getElementById('setting-wrong-weight').value) || 1.0,
@@ -739,17 +769,21 @@ HTML_TEMPLATE = '''
         }
 
         // Load settings on page load
-        document.addEventListener('DOMContentLoaded', loadSettings);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            loadTags();
+        });
 
         // EDIT MODAL
         let editModalContext = null; // 'list' or 'lookup' - to know which to refresh
 
-        function openEditModal(index, chars, english, pinyin, dictPinyin, pypinyinPinyin, audio, context) {
+        function openEditModal(index, chars, english, pinyin, dictPinyin, pypinyinPinyin, audio, context, tags) {
             editModalContext = context || 'list';
             document.getElementById('edit-index').value = index;
             document.getElementById('edit-chars').textContent = chars;
             document.getElementById('edit-english').value = english;
             document.getElementById('edit-pinyin').value = pinyin || '';
+            document.getElementById('edit-tags').value = (tags || []).join(', ');
             document.getElementById('edit-pinyin-options').innerHTML = '';
 
             // Audio button
@@ -798,21 +832,24 @@ HTML_TEMPLATE = '''
             const english = document.getElementById('edit-english').value.trim();
             const pinyinEl = document.getElementById('edit-pinyin');
             const pinyin = pinyinEl ? (pinyinEl.value || pinyinEl.textContent).trim() : '';
+            const tagsStr = document.getElementById('edit-tags').value.trim();
+            const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
 
             if (!english) {
                 alert('English is required');
                 return;
             }
 
-            fetch('/api/update', {
+            fetch('/api/edit', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index, english, pinyin})
+                body: JSON.stringify({index, english, pinyin, tags})
             })
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
                     closeEditModal();
+                    loadTags();  // Refresh tag dropdowns with any new tags
                     if (editModalContext === 'lookup') doSearch();
                     else refreshList();
                 } else {
@@ -894,7 +931,8 @@ HTML_TEMPLATE = '''
                             const idx = v._index;
                             const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
                             const escEnglish = v.english.replace(/'/g, "\\'");
-                            const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'lookup'`;
+                            const tagsJson = JSON.stringify(v.tags || []);
+                            const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'lookup', ${tagsJson}`;
                             vocabHtml += `<div class="vocab-item" onclick="openEditModal(${editParams})" style="cursor: pointer;">
                                 <span class="vocab-english">${v.english}</span>
                                 <span class="vocab-chars chinese">${v.characters || ''}</span>
@@ -1172,7 +1210,9 @@ HTML_TEMPLATE = '''
         function refreshList(loadMore = false) {
             if (!loadMore) listOffset = 0;
             const showStats = document.getElementById('show-stats').checked;
-            fetch('/api/list?offset=' + listOffset + '&limit=10')
+            const tagFilter = document.getElementById('list-tag-filter').value;
+            const tagParam = tagFilter ? '&tag=' + encodeURIComponent(tagFilter) : '';
+            fetch('/api/list?offset=' + listOffset + '&limit=10' + tagParam)
                 .then(r => r.json())
                 .then(data => {
                     let html = '';
@@ -1199,7 +1239,8 @@ HTML_TEMPLATE = '''
                             }
                         }
                         const escEnglish = v.english.replace(/'/g, "\\'");
-                        const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'list'`;
+                        const tagsJson = JSON.stringify(v.tags || []);
+                        const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'list', ${tagsJson}`;
                         const focusStar = v.focus ? '★' : '☆';
                         const focusStyle = v.focus ? 'color: #f0ad4e;' : 'color: #ccc;';
                         html += `<div class="vocab-item" id="vocab-item-${idx}" onclick="openEditModal(${editParams})" style="cursor: pointer;">
@@ -1439,7 +1480,9 @@ HTML_TEMPLATE = '''
         }
 
         function startQuiz() {
-            fetch('/api/list')
+            const tagFilter = document.getElementById('quiz-tag-filter').value;
+            const tagParam = tagFilter ? '?tag=' + encodeURIComponent(tagFilter) : '';
+            fetch('/api/list' + tagParam)
                 .then(r => r.json())
                 .then(data => {
                     if (data.vocab.length < 1) {
@@ -1473,6 +1516,9 @@ HTML_TEMPLATE = '''
                         // inorder - keep as is
                         quizEntries = entriesWithIndex;
                     }
+
+                    // Store full vocab for duplicate matching before limiting
+                    quizAllEntries = entriesWithIndex;
 
                     // Limit to selected count (0 = all)
                     const count = parseInt(document.getElementById('quiz-count').value);
@@ -1614,8 +1660,8 @@ HTML_TEMPLATE = '''
                 // Check if answer matches this entry OR any other entry with same English (for duplicates like "where")
                 const showMode = document.getElementById('quiz-show').value;
                 if (showMode === 'english') {
-                    // Accept any characters that match an entry with the same English
-                    correct = quizEntries.some(e =>
+                    // Accept any characters that match an entry with the same English (search full vocab, not just quiz subset)
+                    correct = quizAllEntries.some(e =>
                         e.english === currentEntry.english && e.characters === answer
                     );
                 } else {
@@ -1630,8 +1676,8 @@ HTML_TEMPLATE = '''
                 const pinyinMatch = requireTones ? comparePinyinWithTones : (a, b) => stripTones(a) === stripTones(b);
 
                 if (showMode === 'english') {
-                    // Accept any pinyin that matches an entry with the same English
-                    correct = quizEntries.some(e =>
+                    // Accept any pinyin that matches an entry with the same English (search full vocab, not just quiz subset)
+                    correct = quizAllEntries.some(e =>
                         e.english === currentEntry.english && pinyinMatch(answer, e.pinyin || '')
                     );
                 } else {
@@ -1895,6 +1941,7 @@ def api_add():
     english = data.get('english', '').strip()
     chars = data.get('chars', '').strip()
     pinyin = data.get('pinyin', '').strip()
+    tags = data.get('tags', [])  # Optional tags array
     force = data.get('force', False)  # Add anyway despite duplicate
     update = data.get('update', False)  # Update existing entry
 
@@ -1965,9 +2012,17 @@ def api_add():
         'pinyin': pinyin,
         'audio': audio_path
     }
+    if tags:
+        entry['tags'] = tags
 
     if update and existing_idx is not None:
-        # Update existing entry
+        # Update existing entry, preserving stats
+        if 'stats' in vocab[existing_idx]:
+            entry['stats'] = vocab[existing_idx]['stats']
+        if 'char_stats' in vocab[existing_idx]:
+            entry['char_stats'] = vocab[existing_idx]['char_stats']
+        if 'focus' in vocab[existing_idx]:
+            entry['focus'] = vocab[existing_idx]['focus']
         vocab[existing_idx] = entry
     else:
         # Add new entry
@@ -1986,11 +2041,12 @@ def api_add():
 
 @app.route('/api/edit', methods=['POST'])
 def api_edit():
-    """Edit a vocabulary entry (English and/or pinyin)."""
+    """Edit a vocabulary entry (English, pinyin, and/or tags)."""
     data = request.json
     index = data.get('index')
     english = data.get('english')
     pinyin = data.get('pinyin')
+    tags = data.get('tags')  # Can be [] to clear tags
 
     vocab = load_vocab()
     if index is None or index < 0 or index >= len(vocab):
@@ -2002,16 +2058,37 @@ def api_edit():
         entry['english'] = english.strip()
     if pinyin is not None:
         entry['pinyin'] = pinyin.strip()
+    if tags is not None:
+        if tags:
+            entry['tags'] = tags
+        elif 'tags' in entry:
+            del entry['tags']  # Remove empty tags
 
     save_vocab(vocab)
     return jsonify({'success': True, 'entry': entry})
+
+
+@app.route('/api/tags')
+def api_tags():
+    """Get all unique tags from vocabulary."""
+    vocab = load_vocab()
+    tags = set()
+    for entry in vocab:
+        for tag in entry.get('tags', []):
+            tags.add(tag)
+    return jsonify({'tags': sorted(tags)})
 
 
 @app.route('/api/list')
 def api_list():
     offset = int(request.args.get('offset', 0))
     limit = int(request.args.get('limit', 0))  # 0 means all (for quiz)
+    tag_filter = request.args.get('tag', '')  # Optional tag filter
     vocab = load_vocab()
+
+    # Filter by tag if specified
+    if tag_filter:
+        vocab = [v for v in vocab if tag_filter in v.get('tags', [])]
 
     # Add pypinyin comparison for each entry
     vocab_with_pypinyin = []
