@@ -740,6 +740,7 @@ def api_tone_practice_question():
     config = load_config()
     wrong_weight = config.get('quiz', {}).get('wrongWeight', 1.0)
     correct_weight = config.get('quiz', {}).get('correctWeight', 0.5)
+    max_count = config.get('quiz', {}).get('maxCount', 20)
 
     # Build list of (syllable, tone) pairs with weights
     candidates = []
@@ -748,7 +749,9 @@ def api_tone_practice_question():
             weight = 1.0
             if weighted and syllable in stats.get('tones', {}):
                 tone_stats = stats['tones'][syllable].get(str(tone), [0, 0])
-                correct, wrong = tone_stats[0], tone_stats[1]
+                # Clamp to maxCount so lowering the setting takes effect immediately
+                correct = min(max_count, tone_stats[0])
+                wrong = min(max_count, tone_stats[1])
                 # Weight formula: more wrong = higher weight
                 import math
                 weight = 1 + wrong_weight * math.log1p(wrong) - correct_weight * math.log1p(correct)

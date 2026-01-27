@@ -687,8 +687,8 @@ let quizEntries = [];
 
         // Calculate weight (duplicated here for list display - same as quiz)
         function calcWeightForList(stats) {
-            const correct = stats?.correct || 0;
-            const wrong = stats?.wrong || 0;
+            const correct = Math.min(quizSettings.maxCount, stats?.correct || 0);
+            const wrong = Math.min(quizSettings.maxCount, stats?.wrong || 0);
             const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
             return Math.max(0.1, weight);
         }
@@ -927,9 +927,10 @@ let quizEntries = [];
         }
 
         // Calculate weight for weighted quiz ordering
+        // Clamps stats to maxCount so lowering the setting takes effect immediately
         function calcWeight(stats) {
-            const correct = stats?.correct || 0;
-            const wrong = stats?.wrong || 0;
+            const correct = Math.min(quizSettings.maxCount, stats?.correct || 0);
+            const wrong = Math.min(quizSettings.maxCount, stats?.wrong || 0);
             const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
             return Math.max(0.1, weight);  // Floor at 0.1
         }
