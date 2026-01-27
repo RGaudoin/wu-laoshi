@@ -86,17 +86,40 @@ sudo apt install espeak-ng
 
 | Option | Status | Notes |
 |--------|--------|-------|
-| **espeak-ng** (cmn-latn-pinyin) | ✅ In use | Synthetic quality but accurate tones |
-| **gTTS** | ❌ Replaced | Natural but no tone control |
+| **espeak-ng** (cmn-latn-pinyin) | ✅ Fallback | Synthetic quality but accurate tones, offline |
+| **gTTS** (character-based) | 🔜 Planned | Natural quality, uses real characters, needs network |
 | **Azure Speech TTS** | Alternative | Natural + tone control, requires API key |
-| **ranchlai/mandarin-tts** | Alternative | High quality, requires PyTorch |
 
 **References:**
 - [espeak-ng GitHub](https://github.com/espeak-ng/espeak-ng)
 - [Azure SSML Phonetic Sets](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-ssml-phonetic-sets)
 
+### Design: gTTS for Tone Practice Audio
+
+**Problem:** espeak-ng produces synthetic/tinny audio. Azure requires an API key. gTTS already produces natural audio for vocabulary words.
+
+**Idea:** Use gTTS with real characters instead of espeak-ng with raw pinyin. `pinyin_tones.json` already maps each syllable+tone to a representative character (e.g., ma1→妈, ma2→麻, ma3→马, ma4→骂). Feed that character to gTTS for natural pronunciation.
+
+**Benefits:**
+- Natural audio quality matching vocabulary TTS
+- No new dependencies (gTTS already in use)
+- Real-word examples reinforce vocabulary learning
+- Could show character + English meaning alongside tone practice
+
+**Implementation approach:**
+1. Pre-generate audio for all syllable+tone combinations (~1200 files) as a one-time setup, stored in a dedicated directory (e.g., `audio/tones/`)
+2. Curate `pinyin_tones.json` to ensure chosen characters are common and pronounce cleanly as single characters via gTTS
+3. Fall back to espeak-ng for any syllable+tone combos where gTTS produces poor results or character is unavailable
+4. Add a "generate tone audio" button in Settings (like existing audio rebuild)
+
+**Risks to test:**
+- gTTS with single characters may sometimes produce odd results (context-dependent pronunciation)
+- Some rare syllable+tone combos may not have good representative characters
+- Network dependency (mitigated by pre-generation and espeak-ng fallback)
+
 ## Future Enhancements
+- gTTS-based tone practice audio (see design note above)
+- Azure TTS as premium option
 - Mobile-responsive design
 - Spaced repetition algorithm
 - Export to Anki format
-- Import from course materials (PDF/image OCR)
