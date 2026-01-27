@@ -1050,7 +1050,19 @@ let quizEntries = [];
                 prompt.textContent = currentEntry.characters || '?';
                 prompt.className = 'quiz-prompt chinese';
             } else if (showMode === 'pinyin') {
-                prompt.textContent = currentEntry.pinyin || '?';
+                prompt.innerHTML = '';
+                const mainSpan = document.createElement('span');
+                mainSpan.textContent = currentEntry.pinyin || '?';
+                prompt.appendChild(mainSpan);
+                if (currentEntry.alt_pinyin && currentEntry.alt_pinyin.length > 1) {
+                    const altSpan = document.createElement('span');
+                    altSpan.style.cssText = 'font-size: 0.5em; color: #999; display: block; margin-top: 4px;';
+                    const others = currentEntry.alt_pinyin.filter(p => p !== currentEntry.pinyin);
+                    if (others.length > 0) {
+                        altSpan.textContent = `also: ${others.join(', ')}`;
+                        prompt.appendChild(altSpan);
+                    }
+                }
                 prompt.className = 'quiz-prompt pinyin';
             } else if (showMode === 'audio') {
                 prompt.textContent = '🔊';
@@ -1778,30 +1790,19 @@ let quizEntries = [];
                         });
 
                         const textbooks = Object.keys(byTextbook);
-                        if (textbooks.length > 1) {
-                            // Multiple textbooks - use optgroups
-                            textbooks.forEach(tb => {
-                                const group = document.createElement('optgroup');
-                                group.label = tb;
-                                byTextbook[tb].forEach(lesson => {
-                                    const opt = document.createElement('option');
-                                    opt.value = lesson.id;
-                                    opt.textContent = `${lesson.display} (${lesson.vocab_count} vocab)`;
-                                    if (lesson.error) opt.disabled = true;
-                                    group.appendChild(opt);
-                                });
-                                dropdown.appendChild(group);
-                            });
-                        } else {
-                            // Single textbook - flat list
-                            data.lessons.forEach(lesson => {
+                        // Always use optgroups to show textbook name
+                        textbooks.forEach(tb => {
+                            const group = document.createElement('optgroup');
+                            group.label = tb;
+                            byTextbook[tb].forEach(lesson => {
                                 const opt = document.createElement('option');
                                 opt.value = lesson.id;
                                 opt.textContent = `${lesson.display} (${lesson.vocab_count} vocab)`;
                                 if (lesson.error) opt.disabled = true;
-                                dropdown.appendChild(opt);
+                                group.appendChild(opt);
                             });
-                        }
+                            dropdown.appendChild(group);
+                        });
                         document.getElementById('import-no-lessons').style.display = 'none';
                     } else {
                         document.getElementById('import-no-lessons').style.display = 'block';

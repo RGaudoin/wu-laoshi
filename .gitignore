@@ -20,6 +20,3 @@ audio/
 
 # OS
 .DS_Store
-
-# Temporary session context
-SESSION_CONTEXT.md

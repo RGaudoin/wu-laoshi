@@ -12,7 +12,9 @@
       "required": ["lesson"],
       "properties": {
         "lesson": {"type": ["integer", "string"], "description": "Lesson number or identifier (can be number or string like '3A')"},
-        "title": {"type": "string", "description": "Lesson title (e.g., 'Cats & Dogs')"},
+        "title": {"type": "string", "description": "Lesson title in English (e.g., 'Cats & Dogs', 'Who is in your family?')"},
+        "title_chinese": {"type": "string", "description": "Lesson title in Chinese characters (optional)"},
+        "title_pinyin": {"type": "string", "description": "Lesson title in pinyin (optional)"},
         "textbook": {"type": "string", "description": "Textbook/course name for grouping (e.g., 'HSK Standard Course 1', 'Integrated Chinese Level 1')"},
         "extracted_by": {
           "type": "string",

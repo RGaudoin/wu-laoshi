@@ -345,6 +345,9 @@ def api_list():
             if pypinyin_ver and dict_pinyin and pypinyin_ver != dict_pinyin:
                 v['pinyin_pypinyin'] = pypinyin_ver
                 v['pinyin_dict'] = dict_pinyin
+            alt_pinyin = BY_CHARS.get(chars, {}).get('alt_pinyin')
+            if alt_pinyin:
+                v['alt_pinyin'] = alt_pinyin
         vocab_with_pypinyin.append(v)
 
     total = len(vocab_with_pypinyin)
