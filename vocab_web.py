@@ -566,10 +566,76 @@ def api_preview_audio():
 # Each entry maps pinyin (without tone) to [char_t1, char_t2, char_t3, char_t4]
 # Using common characters that clearly demonstrate each tone
 
+TONE_AUDIO_DIR = os.path.join(AUDIO_DIR, 'tones')
+
+
+def _generate_single_tone_audio(syllable, tone):
+    """Generate a gTTS MP3 for a single syllable+tone using its representative character.
+
+    Returns (filepath, None) on success or (None, error_string) on failure.
+    """
+    chars_list = PINYIN_TONE_CHARS.get(syllable)
+    if not chars_list or tone < 1 or tone > 4:
+        return None, f"No character mapping for {syllable}{tone}"
+
+    char = chars_list[tone - 1]
+    if not char:
+        return None, f"Empty character for {syllable}{tone}"
+
+    os.makedirs(TONE_AUDIO_DIR, exist_ok=True)
+    filepath = os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3")
+
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=char, lang='zh-CN')
+        tts.save(filepath)
+        return filepath, None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.route('/api/generate_tone_audio', methods=['POST'])
+def api_generate_tone_audio():
+    """Batch-generate gTTS MP3 files for all syllable+tone combinations."""
+    data = request.json or {}
+    force = data.get('force', False)
+
+    generated = 0
+    skipped = 0
+    failed = 0
+    failures = []
+
+    os.makedirs(TONE_AUDIO_DIR, exist_ok=True)
+
+    for syllable, chars_list in PINYIN_TONE_CHARS.items():
+        for tone in range(1, 5):
+            filepath = os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3")
+
+            if not force and os.path.exists(filepath):
+                skipped += 1
+                continue
+
+            path, error = _generate_single_tone_audio(syllable, tone)
+            if path:
+                generated += 1
+            else:
+                failed += 1
+                failures.append({'syllable': syllable, 'tone': tone, 'error': error})
+
+    return jsonify({
+        'success': True,
+        'generated': generated,
+        'skipped': skipped,
+        'failed': failed,
+        'failures': failures
+    })
+
 
 @app.route('/api/tone_audio')
 def api_tone_audio():
-    """Generate audio for a specific pinyin syllable with tone using espeak-ng."""
+    """Serve tone practice audio: pre-generated gTTS MP3 if available, else espeak-ng fallback."""
+    from flask import send_file
+
     pinyin = request.args.get('pinyin', '').strip().lower()
     tone = request.args.get('tone', '1')
 
@@ -583,19 +649,22 @@ def api_tone_audio():
     if not pinyin:
         return '', 400
 
+    # Try pre-generated gTTS MP3 first
+    mp3_path = os.path.join(TONE_AUDIO_DIR, f"{pinyin}{tone}.mp3")
+    if os.path.exists(mp3_path):
+        response = send_file(mp3_path, mimetype='audio/mpeg')
+        response.headers['X-Audio-Source'] = 'gtts'
+        return response
+
+    # Fall back to espeak-ng
     try:
         import subprocess
         import tempfile
         from io import BytesIO
-        from flask import send_file
 
-        # Create pinyin with tone number for espeak-ng
-        # Convert ü to v (espeak-ng expects ASCII pinyin)
         pinyin_ascii = pinyin.replace('ü', 'v')
         pinyin_with_tone = f"{pinyin_ascii}{tone}"
 
-        # Generate WAV using espeak-ng with Mandarin pinyin voice
-        # -s 90 for slower speech, -g 10 adds 10ms gap between words
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
             tmp_path = tmp.name
 
@@ -608,16 +677,15 @@ def api_tone_audio():
             print(f"espeak-ng error: {result.stderr}")
             return '', 500
 
-        # Read the WAV file and return it
         with open(tmp_path, 'rb') as f:
             wav_data = BytesIO(f.read())
 
-        # Clean up temp file
-        import os
         os.unlink(tmp_path)
 
         wav_data.seek(0)
-        return send_file(wav_data, mimetype='audio/wav')
+        response = send_file(wav_data, mimetype='audio/wav')
+        response.headers['X-Audio-Source'] = 'espeak-ng'
+        return response
     except Exception as e:
         print(f"Tone audio error for {pinyin} tone {tone}: {e}")
         return '', 500

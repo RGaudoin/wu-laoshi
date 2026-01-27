@@ -351,6 +351,20 @@
                 <button class="secondary" onclick="rebuildAudio()">Rebuild Audio</button>
             </div>
 
+            <!-- Tone Audio Section -->
+            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">Tone Audio</button>
+            <div class="collapsible-content collapsed">
+                <p style="color: #666; font-size: 13px; margin: 0 0 10px 0;">
+                    Pre-generate natural gTTS audio for all tone practice syllables.
+                    Uses representative characters from pinyin_tones.json.
+                </p>
+                <label style="font-size: 14px; display: flex; align-items: center; gap: 5px; margin-bottom: 10px;">
+                    <input type="checkbox" id="tone-audio-force"> Force regenerate all
+                </label>
+                <button class="secondary" onclick="generateToneAudio()">Generate Tone Audio</button>
+                <p id="tone-audio-status" style="color: #666; font-size: 13px; margin: 10px 0 0 0;"></p>
+            </div>
+
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="saveSettings()">Save</button>
                 <button class="secondary" onclick="closeSettings()">Cancel</button>

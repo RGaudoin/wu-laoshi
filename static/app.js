@@ -852,6 +852,41 @@ let quizEntries = [];
             });
         }
 
+        function generateToneAudio() {
+            const force = document.getElementById('tone-audio-force').checked;
+            const label = force ? 'Force regenerate ALL tone audio' : 'Generate missing tone audio';
+            if (!confirm(`${label}?\n\nThis calls gTTS for each syllable+tone combination and may take a while.`)) return;
+
+            const statusEl = document.getElementById('tone-audio-status');
+            statusEl.textContent = 'Generating tone audio...';
+
+            fetch('/api/generate_tone_audio', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({force})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    let msg = `Done: ${data.generated} generated, ${data.skipped} skipped`;
+                    if (data.failed > 0) {
+                        msg += `, ${data.failed} failed`;
+                    }
+                    statusEl.textContent = msg;
+                    if (data.failures && data.failures.length > 0) {
+                        const details = data.failures.map(f => `${f.syllable}${f.tone}: ${f.error}`).join('\n');
+                        console.warn('Tone audio generation failures:\n' + details);
+                        statusEl.textContent += ' (see console for details)';
+                    }
+                } else {
+                    statusEl.textContent = 'Error: ' + (data.error || 'unknown');
+                }
+            })
+            .catch(err => {
+                statusEl.textContent = 'Error: ' + err.message;
+            });
+        }
+
         function editWord(index, english, pinyin, dictPinyin, pypinyinPinyin) {
             const englishSpan = document.getElementById(`english-${index}`);
             const pinyinSpan = document.getElementById(`pinyin-${index}`);
@@ -1659,7 +1694,15 @@ let quizEntries = [];
 
             const { syllable, tone } = tonePracticeState.current;
             fetch(`/api/tone_audio?pinyin=${encodeURIComponent(syllable)}&tone=${tone}`)
-                .then(r => r.blob())
+                .then(r => {
+                    const source = r.headers.get('X-Audio-Source');
+                    const playBtn = document.getElementById('tone-practice-play');
+                    if (playBtn) {
+                        playBtn.title = source === 'espeak-ng' ? 'Synthetic audio (espeak-ng fallback)' : 'Natural audio (gTTS)';
+                        playBtn.classList.toggle('audio-fallback', source === 'espeak-ng');
+                    }
+                    return r.blob();
+                })
                 .then(blob => {
                     const url = URL.createObjectURL(blob);
                     new Audio(url).play();

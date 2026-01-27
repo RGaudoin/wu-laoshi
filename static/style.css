@@ -381,6 +381,10 @@ select {
     font-size: 24px;
     padding: 15px 40px;
 }
+.tone-practice-play.audio-fallback .tone-play-btn {
+    opacity: 0.6;
+    border-style: dashed;
+}
 
 .tone-practice-question {
     font-size: 18px;
