@@ -104,9 +104,11 @@ let quizEntries = [];
                 .split(/[\s\/,;]+/)
                 .filter(w => w.length >= 3 && !stopWords.includes(w));
 
-            // Exact match on any part
+            // Exact match on any part (also try with "to" stripped as infinitive marker)
+            const stripTo = s => s.replace(/\bto\s+/g, '').replace(/\s+/g, ' ').trim();
             for (const part of parts) {
                 if (normAnswer === part) return true;
+                if (stripTo(normAnswer) === stripTo(part)) return true;
             }
 
             // Exact match on any keyword (for particles especially)
@@ -1151,6 +1153,23 @@ let quizEntries = [];
             if (answerMode === 'english') {
                 correctAnswer = currentEntry.english;
                 correct = matchEnglish(answer, correctAnswer);
+                // Also accept English from other entries with same pinyin or characters
+                if (!correct) {
+                    const showMode = document.getElementById('quiz-show').value;
+                    if (showMode === 'pinyin') {
+                        correct = quizAllEntries.some(e =>
+                            e.pinyin === currentEntry.pinyin && matchEnglish(answer, e.english)
+                        );
+                    } else if (showMode === 'characters') {
+                        correct = quizAllEntries.some(e =>
+                            e.characters === currentEntry.characters && matchEnglish(answer, e.english)
+                        );
+                    } else if (showMode === 'audio') {
+                        correct = quizAllEntries.some(e =>
+                            e.characters === currentEntry.characters && matchEnglish(answer, e.english)
+                        );
+                    }
+                }
             } else if (answerMode === 'characters') {
                 correctAnswer = currentEntry.characters || '';
                 // Check if answer matches this entry OR any other entry with same English (for duplicates like "where")
@@ -1188,8 +1207,19 @@ let quizEntries = [];
             if (currentEntry.pinyin_pypinyin && currentEntry.pinyin_dict) {
                 pinyinDisplay = `${currentEntry.pinyin} <span style="color: #999; font-size: 14px;">(dict: ${currentEntry.pinyin_dict} | pypinyin: ${currentEntry.pinyin_pypinyin})</span>`;
             }
+            // Find alternative meanings from other entries with same characters or pinyin
+            const altMeanings = quizAllEntries
+                .filter(e => e !== currentEntry && (
+                    (e.characters && e.characters === currentEntry.characters) ||
+                    (e.pinyin && e.pinyin === currentEntry.pinyin)
+                ))
+                .map(e => e.english);
+            const altDisplay = altMeanings.length > 0
+                ? ` <span style="color: #999; font-size: 14px;">(also: ${altMeanings.join('; ')})</span>`
+                : '';
+
             const entryInfo = `<span class="chinese">${currentEntry.characters || ''}</span> ` +
-                `<span class="pinyin">(${pinyinDisplay})</span> - <span id="quiz-english-display">${currentEntry.english}</span>`;
+                `<span class="pinyin">(${pinyinDisplay})</span> - <span id="quiz-english-display">${currentEntry.english}</span>${altDisplay}`;
 
             // Determine which stats to use based on quiz mode
             const useCharStats = quizUsesCharacters();
@@ -1220,12 +1250,12 @@ let quizEntries = [];
                 document.getElementById('quiz-play-audio').style.display = 'inline-block';
             }
 
+            const yourAnswer = `<span style="font-size: 13px; color: ${correct ? '#666' : '#c00'};"> (you said: "${answer}")</span>`;
             if (correct) {
                 quizCorrect++;
-                feedback.innerHTML = '✓ Correct! ' + entryInfo + statsInfo + editBtns;
+                feedback.innerHTML = '✓ Correct!' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
                 feedback.className = 'quiz-feedback correct';
             } else {
-                const yourAnswer = `<span style="color: #c00; font-size: 13px;"> (you said: "${answer}")</span>`;
                 feedback.innerHTML = '✗ Wrong.' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
                 feedback.className = 'quiz-feedback wrong';
                 if (currentEntry.audio) playAudio(currentEntry.audio);
