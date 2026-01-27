@@ -887,6 +887,162 @@ let quizEntries = [];
             });
         }
 
+        // ===== TONE AUDIO CURATION =====
+
+        let curationItems = [];
+
+        function loadCurationItems() {
+            const filter = document.getElementById('curation-filter').value;
+            const flagFilter = document.getElementById('curation-flag-filter').value;
+            const includeReviewed = filter === 'all_flagged' || filter === 'accepted';
+
+            const summaryEl = document.getElementById('curation-summary');
+            summaryEl.textContent = 'Analysing...';
+
+            fetch(`/api/tone_curation/analyse?include_reviewed=${includeReviewed}`)
+                .then(r => r.json())
+                .then(data => {
+                    const summary = data.summary;
+                    summaryEl.textContent = `${summary.total_flagged} flagged total · ${summary.reviewed} reviewed · ${summary.unreviewed} unreviewed`;
+
+                    // Client-side filtering
+                    let items = data.items;
+                    if (filter === 'accepted') {
+                        items = items.filter(i => i.status === 'accepted');
+                    }
+                    if (flagFilter !== 'any') {
+                        items = items.filter(i => i.flags.includes(flagFilter));
+                    }
+
+                    curationItems = items;
+                    renderCurationList(items);
+                })
+                .catch(err => {
+                    summaryEl.textContent = 'Error: ' + err.message;
+                });
+        }
+
+        function renderCurationList(items) {
+            const listEl = document.getElementById('curation-list');
+            if (!items.length) {
+                listEl.innerHTML = '<p style="padding: 15px; color: #666;">No items to review.</p>';
+                return;
+            }
+
+            let html = '';
+            items.forEach((item, idx) => {
+                const key = `${item.syllable}${item.tone}`;
+                const flagBadges = item.flags.map(f => {
+                    const colors = {
+                        duplicate_char: '#f44336',
+                        cedict_mismatch: '#ff9800',
+                        polyphone: '#2196F3',
+                        cedict_missing: '#999'
+                    };
+                    const labels = {
+                        duplicate_char: 'DUP',
+                        cedict_mismatch: 'MISMATCH',
+                        polyphone: 'POLY',
+                        cedict_missing: 'MISSING'
+                    };
+                    return `<span style="font-size: 11px; padding: 1px 6px; border-radius: 8px; background: ${colors[f] || '#999'}; color: white;">${labels[f] || f}</span>`;
+                }).join(' ');
+
+                const statusBadge = item.status === 'accepted'
+                    ? ' <span style="font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #4CAF50; color: white;">OK</span>'
+                    : '';
+
+                const altsHtml = item.alternatives.length > 0
+                    ? `<div id="curation-alts-${idx}" style="display: none; margin-top: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                        <strong style="font-size: 12px;">Alternatives:</strong>
+                        ${item.alternatives.map(alt =>
+                            `<div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 13px;">
+                                <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${alt.char}')" title="Play">&#x1f50a;</button>
+                                <span class="chinese" style="font-size: 18px;">${alt.char}</span>
+                                <span style="color: #666;">${alt.definition}</span>
+                                ${alt.polyphone ? '<span style="font-size: 11px; padding: 1px 4px; border-radius: 6px; background: #2196F3; color: white;">POLY</span>' : ''}
+                                <button class="secondary" style="font-size: 12px; padding: 2px 8px; margin-left: auto;" onclick="event.stopPropagation(); replaceCurationChar('${item.syllable}', ${item.tone}, '${alt.char}', ${idx})">Use</button>
+                            </div>`
+                        ).join('')}
+                       </div>`
+                    : '';
+
+                html += `<div id="curation-item-${idx}" style="padding: 10px 12px; border-bottom: 1px solid #eee;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${item.syllable}', ${item.tone})" title="Play current">&#x1f50a;</button>
+                        <strong style="font-size: 14px;">${key}</strong>
+                        <span class="chinese" style="font-size: 20px;">${item.current_char}</span>
+                        ${flagBadges}${statusBadge}
+                        <div style="margin-left: auto; display: flex; gap: 5px;">
+                            ${item.alternatives.length > 0 ? `<button class="secondary" style="font-size: 12px; padding: 2px 8px;" onclick="toggleCurationAlts(${idx})">Alts (${item.alternatives.length})</button>` : '<span style="font-size: 12px; color: #999;">no alts</span>'}
+                            <button class="secondary" style="font-size: 12px; padding: 2px 8px;" onclick="acceptCurationChar('${item.syllable}', ${item.tone}, ${idx})">${item.status === 'accepted' ? 'Reset' : 'Accept'}</button>
+                        </div>
+                    </div>
+                    ${altsHtml}
+                </div>`;
+            });
+
+            listEl.innerHTML = html;
+        }
+
+        function toggleCurationAlts(idx) {
+            const el = document.getElementById(`curation-alts-${idx}`);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function playCurationAudio(syllable, tone) {
+            fetch(`/api/tone_audio?pinyin=${encodeURIComponent(syllable)}&tone=${tone}`)
+                .then(r => r.blob())
+                .then(blob => { new Audio(URL.createObjectURL(blob)).play(); })
+                .catch(err => console.error('Curation audio failed:', err));
+        }
+
+        function playCurationPreview(char) {
+            fetch(`/api/tone_audio_preview?char=${encodeURIComponent(char)}`)
+                .then(r => r.blob())
+                .then(blob => { new Audio(URL.createObjectURL(blob)).play(); })
+                .catch(err => console.error('Preview audio failed:', err));
+        }
+
+        function acceptCurationChar(syllable, tone, idx) {
+            const item = curationItems[idx];
+            if (item.status === 'accepted') {
+                // Reset
+                fetch('/api/tone_curation/reset', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({syllable, tone})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) loadCurationItems();
+                });
+            } else {
+                // Accept
+                fetch('/api/tone_curation/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({syllable, tone, action: 'accept'})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) loadCurationItems();
+                });
+            }
+        }
+
+        function replaceCurationChar(syllable, tone, newChar, idx) {
+            fetch('/api/tone_curation/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({syllable, tone, action: 'replace', new_char: newChar})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) loadCurationItems();
+            });
+        }
+
         function editWord(index, english, pinyin, dictPinyin, pypinyinPinyin) {
             const englishSpan = document.getElementById(`english-${index}`);
             const pinyinSpan = document.getElementById(`pinyin-${index}`);

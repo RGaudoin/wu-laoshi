@@ -8,6 +8,7 @@ __pycache__/
 data/vocabulary.json
 data/config.json
 data/pinyin_stats.json
+data/pinyin_tones_reviewed.json
 data/cedict.txt
 data/backup/
 data/import/

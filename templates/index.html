@@ -365,6 +365,36 @@
                 <p id="tone-audio-status" style="color: #666; font-size: 13px; margin: 10px 0 0 0;"></p>
             </div>
 
+            <!-- Tone Audio Curation Section -->
+            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">Curate Tone Characters</button>
+            <div class="collapsible-content collapsed">
+                <p style="color: #666; font-size: 13px; margin: 0 0 10px 0;">
+                    Review flagged character mappings. Listen and accept or replace with better alternatives.
+                </p>
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">
+                        Filter:
+                        <select id="curation-filter" style="margin-left: 5px; font-size: 13px;">
+                            <option value="unreviewed">Unreviewed only</option>
+                            <option value="all_flagged">All flagged</option>
+                            <option value="accepted">Accepted only</option>
+                        </select>
+                    </label>
+                    <label style="font-size: 13px;">
+                        Flag:
+                        <select id="curation-flag-filter" style="margin-left: 5px; font-size: 13px;">
+                            <option value="any">Any</option>
+                            <option value="duplicate_char">Duplicate character</option>
+                            <option value="cedict_mismatch">CEDICT mismatch</option>
+                            <option value="polyphone">Polyphone</option>
+                        </select>
+                    </label>
+                    <button class="secondary" onclick="loadCurationItems()" style="font-size: 13px; padding: 4px 10px;">Analyse</button>
+                </div>
+                <p id="curation-summary" style="color: #666; font-size: 13px; margin: 0 0 10px 0;"></p>
+                <div id="curation-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px;"></div>
+            </div>
+
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="saveSettings()">Save</button>
                 <button class="secondary" onclick="closeSettings()">Cancel</button>

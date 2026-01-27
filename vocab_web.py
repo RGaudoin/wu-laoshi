@@ -692,6 +692,242 @@ def api_tone_audio():
 
 
 # ============================================================================
+# TONE AUDIO CURATION API
+# ============================================================================
+
+TONE_REVIEWED_FILE = os.path.join(DATA_DIR, 'data', 'pinyin_tones_reviewed.json')
+
+
+def _load_tone_reviewed():
+    """Load review decisions for tone character mappings."""
+    if os.path.exists(TONE_REVIEWED_FILE):
+        with open(TONE_REVIEWED_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+
+def _save_tone_reviewed(reviewed):
+    """Save review decisions."""
+    with open(TONE_REVIEWED_FILE, 'w', encoding='utf-8') as f:
+        json.dump(reviewed, f, ensure_ascii=False, indent=2)
+
+
+def _find_cedict_single_chars(syllable, tone):
+    """Find single-character CC-CEDICT entries matching a syllable+tone.
+
+    Returns list of dicts: [{char, pinyin, definition, polyphone}]
+    """
+    # BY_PINYIN keys are toneless+spaceless
+    entries = BY_PINYIN.get(syllable, [])
+    results = []
+    seen_chars = set()
+
+    for entry in entries:
+        simp = entry['simplified']
+        # Only single characters
+        if len(simp) != 1:
+            continue
+        if simp in seen_chars:
+            continue
+
+        # Check tone matches
+        numbered = entry['pinyin_numbered'].strip().lower()
+        if numbered != f"{syllable}{tone}":
+            continue
+
+        seen_chars.add(simp)
+        is_polyphone = 'alt_pinyin' in entry
+        results.append({
+            'char': simp,
+            'pinyin': entry['pinyin'],
+            'definition': '; '.join(entry['definitions'][:3]),
+            'polyphone': is_polyphone
+        })
+
+    # Sort: non-polyphones first, then by definition length (shorter = more common heuristic)
+    results.sort(key=lambda x: (x['polyphone'], len(x['definition'])))
+    return results
+
+
+def _analyse_tone_entry(syllable, tone, char, all_chars_for_syllable):
+    """Analyse a single syllable+tone+char mapping and return flags."""
+    flags = []
+
+    # Flag 1: duplicate character across tones
+    tone_idx = tone - 1
+    other_tones_chars = [all_chars_for_syllable[i] for i in range(4) if i != tone_idx]
+    if char in other_tones_chars:
+        flags.append('duplicate_char')
+
+    # Flag 2: CEDICT mismatch — check if this char has this syllable+tone reading
+    cedict_entry = BY_CHARS.get(char)
+    if cedict_entry:
+        numbered = cedict_entry['pinyin_numbered'].strip().lower()
+        # For single chars, pinyin_numbered should be just "syllableN"
+        # But BY_CHARS may have the last-seen entry; check alt_pinyin too
+        has_reading = numbered == f"{syllable}{tone}"
+        if not has_reading and 'alt_pinyin' in cedict_entry:
+            # alt_pinyin has toned pinyin, need to check differently
+            # Look up all entries for this character
+            for entry in BY_PINYIN.get(syllable, []):
+                if entry['simplified'] == char or entry['traditional'] == char:
+                    if entry['pinyin_numbered'].strip().lower() == f"{syllable}{tone}":
+                        has_reading = True
+                        break
+        if not has_reading:
+            flags.append('cedict_mismatch')
+    else:
+        # Character not in CEDICT at all
+        flags.append('cedict_missing')
+
+    # Flag 3: polyphone risk
+    if cedict_entry and 'alt_pinyin' in cedict_entry:
+        flags.append('polyphone')
+
+    return flags
+
+
+@app.route('/api/tone_curation/analyse')
+def api_tone_curation_analyse():
+    """Analyse pinyin_tones.json for suspect mappings and suggest alternatives."""
+    include_reviewed = request.args.get('include_reviewed', 'false') == 'true'
+    reviewed = _load_tone_reviewed()
+
+    items = []
+    total_flagged = 0
+    total_reviewed = 0
+    total_unreviewed = 0
+
+    for syllable, chars_list in PINYIN_TONE_CHARS.items():
+        for tone in range(1, 5):
+            char = chars_list[tone - 1]
+            key = f"{syllable}{tone}"
+
+            flags = _analyse_tone_entry(syllable, tone, char, chars_list)
+            if not flags:
+                continue
+
+            total_flagged += 1
+            status = reviewed.get(key, 'flagged')
+
+            if status == 'accepted':
+                total_reviewed += 1
+                if not include_reviewed:
+                    continue
+            else:
+                total_unreviewed += 1
+
+            alternatives = _find_cedict_single_chars(syllable, tone)
+            # Remove current char from alternatives
+            alternatives = [a for a in alternatives if a['char'] != char]
+
+            items.append({
+                'syllable': syllable,
+                'tone': tone,
+                'current_char': char,
+                'flags': flags,
+                'status': status,
+                'alternatives': alternatives[:8]
+            })
+
+    return jsonify({
+        'items': items,
+        'summary': {
+            'total_flagged': total_flagged,
+            'reviewed': total_reviewed,
+            'unreviewed': total_unreviewed
+        }
+    })
+
+
+@app.route('/api/tone_curation/update', methods=['POST'])
+def api_tone_curation_update():
+    """Accept or replace a tone character mapping."""
+    data = request.json or {}
+    syllable = data.get('syllable', '')
+    tone = data.get('tone', 0)
+    action = data.get('action', '')
+
+    if not syllable or tone < 1 or tone > 4 or action not in ('accept', 'replace'):
+        return jsonify({'success': False, 'error': 'Invalid parameters'}), 400
+
+    key = f"{syllable}{tone}"
+    reviewed = _load_tone_reviewed()
+
+    if action == 'accept':
+        reviewed[key] = 'accepted'
+        _save_tone_reviewed(reviewed)
+        return jsonify({'success': True, 'action': 'accepted'})
+
+    elif action == 'replace':
+        new_char = data.get('new_char', '')
+        if not new_char:
+            return jsonify({'success': False, 'error': 'No replacement character'}), 400
+
+        # Update pinyin_tones.json
+        PINYIN_TONE_CHARS[syllable][tone - 1] = new_char
+        tones_file = os.path.join(DATA_DIR, 'data', 'pinyin_tones.json')
+        with open(tones_file, 'w', encoding='utf-8') as f:
+            json.dump(PINYIN_TONE_CHARS, f, ensure_ascii=False, indent=2)
+
+        # Regenerate audio for this syllable+tone
+        path, error = _generate_single_tone_audio(syllable, tone)
+
+        reviewed[key] = 'accepted'
+        _save_tone_reviewed(reviewed)
+
+        return jsonify({
+            'success': True,
+            'action': 'replaced',
+            'new_char': new_char,
+            'audio_error': error
+        })
+
+
+@app.route('/api/tone_curation/reset', methods=['POST'])
+def api_tone_curation_reset():
+    """Reset review decisions."""
+    data = request.json or {}
+
+    if data.get('all'):
+        _save_tone_reviewed({})
+        return jsonify({'success': True, 'reset': 'all'})
+
+    syllable = data.get('syllable', '')
+    tone = data.get('tone', 0)
+    if not syllable or tone < 1 or tone > 4:
+        return jsonify({'success': False, 'error': 'Invalid parameters'}), 400
+
+    key = f"{syllable}{tone}"
+    reviewed = _load_tone_reviewed()
+    reviewed.pop(key, None)
+    _save_tone_reviewed(reviewed)
+    return jsonify({'success': True, 'reset': key})
+
+
+@app.route('/api/tone_audio_preview')
+def api_tone_audio_preview():
+    """Generate on-the-fly gTTS audio for a character (not saved to disk)."""
+    from flask import send_file
+    from io import BytesIO
+
+    char = request.args.get('char', '').strip()
+    if not char:
+        return '', 400
+
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=char, lang='zh-CN')
+        buf = BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        return send_file(buf, mimetype='audio/mpeg')
+    except Exception as e:
+        print(f"Preview audio error for '{char}': {e}")
+        return '', 500
+
+
+# ============================================================================
 # TONE PRACTICE API
 # ============================================================================
 
