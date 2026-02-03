@@ -9,7 +9,7 @@ import os
 import json
 import random
 import re
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template, request, jsonify
 
 from vocab import (
     load_vocab, save_vocab, load_cedict, generate_audio,
@@ -26,1771 +26,15 @@ BY_PINYIN, BY_CHARS = load_cedict()
 print(f"Dictionary loaded: {len(BY_CHARS)} entries")
 print(f"Vocabulary: {len(load_vocab())} entries")
 
-HTML_TEMPLATE = r'''
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mandarin Vocabulary</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        h1 { color: #333; text-align: center; margin-bottom: 10px; }
-
-        /* Main navigation */
-        .main-nav {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-        }
-        .nav-btn {
-            padding: 10px 20px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-            color: #666;
-            border-radius: 5px 5px 0 0;
-        }
-        .nav-btn:hover { background: #eee; }
-        .nav-btn.active { background: #333; color: white; font-weight: bold; }
-        .nav-btn.settings-btn { margin-left: auto; }
-
-        /* Sections */
-        .section {
-            display: none;
-        }
-        .section.active { display: block; }
-
-        /* Sub-tabs (within sections) */
-        .tabs {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 20px;
-        }
-        .tab {
-            padding: 10px 20px;
-            background: #ddd;
-            border: none;
-            cursor: pointer;
-            border-radius: 5px 5px 0 0;
-            font-size: 16px;
-        }
-        .tab.active { background: white; font-weight: bold; }
-        .tab-content {
-            display: none;
-            background: white;
-            padding: 20px;
-            border-radius: 0 5px 5px 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .tab-content.active { display: block; }
-
-        /* Home section cards */
-        .home-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .home-card {
-            background: white;
-            padding: 30px 20px;
-            border-radius: 10px;
-            text-align: center;
-            cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .home-card:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
-        .home-card h3 { margin: 0 0 10px 0; color: #333; }
-        .home-card p { margin: 0; color: #666; font-size: 14px; }
-
-        /* Settings modal */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.5);
-            z-index: 100;
-        }
-        .modal-overlay.active { display: flex; justify-content: center; align-items: center; }
-        .modal {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            max-width: 500px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .modal h2 { margin-top: 0; }
-        .modal-close { float: right; background: none; font-size: 24px; padding: 0 10px; }
-
-        /* Collapsible sections */
-        .collapsible {
-            background: #e0e0e0;
-            color: #333;
-            border: none;
-            padding: 12px 15px;
-            width: 100%;
-            text-align: left;
-            cursor: pointer;
-            font-size: 15px;
-            font-weight: bold;
-            border-radius: 5px;
-            margin-bottom: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .collapsible:hover { background: #d0d0d0; }
-        .collapsible::after { content: '▼'; font-size: 12px; transition: transform 0.2s; color: #555; }
-        .collapsible.collapsed::after { transform: rotate(-90deg); }
-        .collapsible-content {
-            padding: 15px;
-            background: white;
-            border: 1px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-            margin-bottom: 15px;
-            margin-top: -5px;
-        }
-        .collapsible-content.collapsed { display: none; }
-
-        /* Chinese text */
-        .chinese {
-            font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimHei", sans-serif;
-            font-size: 24px;
-        }
-        .pinyin {
-            font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
-            font-size: 18px;
-            color: #666;
-        }
-
-        /* Forms */
-        input[type="text"] {
-            padding: 10px;
-            font-size: 18px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            width: 300px;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 16px;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        button:hover { background: #45a049; }
-        button.secondary { background: #2196F3; }
-        button.danger { background: #f44336; }
-
-        /* Lists */
-        .vocab-item {
-            padding: 15px;
-            border-bottom: 1px solid #eee;
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-        .vocab-item:hover { background: #f9f9f9; }
-        .vocab-english { width: 150px; font-weight: bold; }
-        .vocab-chars { font-size: 28px; }
-        .vocab-pinyin { color: #666; }
-
-        /* Dictionary matches */
-        .match-item {
-            padding: 10px;
-            border: 1px solid #ddd;
-            margin: 5px 0;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        .match-item:hover { background: #e3f2fd; border-color: #2196F3; }
-        .match-item.selected { background: #bbdefb; border-color: #1976D2; }
-
-        /* Quiz */
-        .quiz-prompt {
-            font-size: 48px;
-            text-align: center;
-            padding: 40px;
-            margin: 20px 0;
-        }
-        .quiz-input {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin: 20px 0;
-        }
-        .quiz-feedback {
-            text-align: center;
-            font-size: 24px;
-            padding: 20px;
-        }
-        .correct { color: #4CAF50; }
-        .wrong { color: #f44336; }
-        .score { text-align: center; font-size: 18px; color: #666; }
-
-        /* Audio button */
-        .audio-btn {
-            background: #9C27B0;
-            padding: 5px 10px;
-            font-size: 14px;
-        }
-
-        /* Settings */
-        .settings {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px 20px;
-            margin-bottom: 20px;
-            align-items: center;
-        }
-        select {
-            padding: 8px;
-            font-size: 16px;
-            border-radius: 5px;
-        }
-    </style>
-</head>
-<body>
-    <h1>Mandarin Vocabulary</h1>
-
-    <!-- Main Navigation -->
-    <nav class="main-nav">
-        <button class="nav-btn active" onclick="showSection('home')">Home</button>
-        <button class="nav-btn" onclick="showSection('learn')">Learn</button>
-        <button class="nav-btn" onclick="showSection('vocabulary')">Vocabulary</button>
-        <button class="nav-btn" onclick="showSection('import')">Import</button>
-        <button class="nav-btn settings-btn" onclick="openSettings()">⚙️</button>
-    </nav>
-
-    <!-- HOME SECTION -->
-    <div id="section-home" class="section active">
-        <div class="home-cards">
-            <div class="home-card" onclick="showSection('learn')">
-                <h3>📝 Learn</h3>
-                <p>Quiz yourself on vocabulary</p>
-            </div>
-            <div class="home-card" onclick="showSection('vocabulary')">
-                <h3>📚 Vocabulary</h3>
-                <p id="home-vocab-count">Lookup, add, and manage words</p>
-            </div>
-            <div class="home-card" onclick="showSection('import')">
-                <h3>📄 Import</h3>
-                <p>Import from course materials</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- LEARN SECTION -->
-    <div id="section-learn" class="section">
-        <div class="tabs">
-            <button class="tab active" onclick="showSubTab('learn', 'quiz')">Quiz</button>
-            <!-- Future: Tones, Conversation tabs -->
-        </div>
-
-        <!-- QUIZ TAB -->
-        <div id="learn-quiz" class="tab-content active">
-            <div id="quiz-stats-summary" style="background: #f0f0f0; padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; color: #666; font-size: 14px;"></div>
-            <div class="settings">
-                <label>Show:
-                    <select id="quiz-show">
-                        <option value="english">English</option>
-                        <option value="characters">Characters</option>
-                        <option value="pinyin">Pinyin</option>
-                        <option value="audio">Audio Only</option>
-                    </select>
-                </label>
-                <label>Answer with:
-                    <select id="quiz-answer">
-                        <option value="characters">Characters</option>
-                        <option value="pinyin">Pinyin</option>
-                        <option value="english">English</option>
-                    </select>
-                </label>
-                <label>Order:
-                    <select id="quiz-order">
-                        <option value="random">Random</option>
-                        <option value="weighted">Weighted (more mistakes = more frequent)</option>
-                        <option value="inorder">In Order</option>
-                    </select>
-                </label>
-                <label>Count:
-                    <select id="quiz-count">
-                        <option value="10">10</option>
-                        <option value="20" selected>20</option>
-                        <option value="50">50</option>
-                        <option value="0">All</option>
-                    </select>
-                </label>
-                <label><input type="checkbox" id="quiz-focus-only"> Focus only</label>
-                <label>Tag: <select id="quiz-tag-filter"><option value="">All</option></select></label>
-                <label><input type="checkbox" id="quiz-require-tones"> Require tones</label>
-                <button onclick="startQuiz()">Start Quiz</button>
-            </div>
-            <div class="quiz-prompt chinese" id="quiz-prompt">Press "Start Quiz" to begin</div>
-            <div id="quiz-audio-btn" style="text-align: center; margin: 10px 0;">
-                <button class="audio-btn" onclick="playQuizAudio()" style="display: none;" id="quiz-play-audio">🔊 Play Audio</button>
-            </div>
-            <div class="quiz-input" id="quiz-input-area">
-                <input type="text" id="quiz-input" class="chinese" placeholder="Your answer">
-                <button onclick="checkAnswer()">Check</button>
-            </div>
-            <div class="quiz-feedback" id="quiz-feedback"></div>
-            <div id="quiz-next-btn" style="text-align: center; display: none; margin: 15px 0;">
-                <button class="secondary" onclick="nextQuestion()">Next →</button>
-            </div>
-            <div class="score" id="quiz-score">Score: 0/0</div>
-        </div>
-    </div>
-
-    <!-- VOCABULARY SECTION -->
-    <div id="section-vocabulary" class="section">
-        <div class="tabs">
-            <button class="tab active" onclick="showSubTab('vocabulary', 'lookup')">Lookup</button>
-            <button class="tab" onclick="showSubTab('vocabulary', 'add')">Add</button>
-            <button class="tab" onclick="showSubTab('vocabulary', 'list')">List</button>
-        </div>
-
-        <!-- LOOKUP TAB -->
-        <div id="vocabulary-lookup" class="tab-content active">
-            <div style="margin-bottom: 20px;">
-                <input type="text" id="search-input" placeholder="Search (English, 中文, or pinyin)">
-                <button onclick="doSearch()">Search</button>
-            </div>
-            <h3>Your Vocabulary</h3>
-            <div id="vocab-results"></div>
-            <h3>Dictionary</h3>
-            <div id="dict-count"></div>
-            <div id="dict-results"></div>
-        </div>
-
-        <!-- ADD TAB -->
-        <div id="vocabulary-add" class="tab-content">
-            <div style="margin-bottom: 15px;">
-                <label>English: </label>
-                <input type="text" id="add-english" placeholder="meaning">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label>Characters: </label>
-                <input type="text" id="add-chars" placeholder="中文" class="chinese">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label>OR Search: </label>
-                <input type="text" id="add-pinyin" placeholder="pinyin or English (e.g., ni3 hao3, you)">
-                <button class="secondary" onclick="searchPinyin()">Search Dictionary</button>
-            </div>
-            <div id="add-count"></div>
-            <div id="pinyin-matches"></div>
-            <button onclick="addWord()" style="margin-top: 20px;">Add to Vocabulary</button>
-            <div id="add-result" style="margin-top: 15px;"></div>
-        </div>
-
-        <!-- LIST TAB -->
-        <div id="vocabulary-list" class="tab-content">
-            <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
-                <label><input type="checkbox" id="show-stats" onchange="refreshList()"> Show quiz stats</label>
-                <label>Tag: <select id="list-tag-filter" onchange="refreshList()"><option value="">All</option></select></label>
-            </div>
-            <div id="list-count"></div>
-            <div id="vocab-list"></div>
-        </div>
-    </div>
-
-    <!-- IMPORT SECTION -->
-    <div id="section-import" class="section">
-        <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-            <h2>Import Course Materials</h2>
-            <p style="color: #666;">Upload images or PDFs of your course materials to extract vocabulary and exercises.</p>
-            <p style="color: #999; font-style: italic;">Coming soon - requires Claude API configuration in Settings.</p>
-        </div>
-    </div>
-
-    <!-- SETTINGS MODAL -->
-    <div id="settings-modal" class="modal-overlay">
-        <div class="modal">
-            <button class="modal-close" onclick="closeSettings()">&times;</button>
-            <h2>Settings</h2>
-
-            <!-- API Section -->
-            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">API</button>
-            <div class="collapsible-content collapsed">
-                <label><strong>Claude API Key</strong></label>
-                <p style="color: #666; font-size: 14px; margin: 5px 0;">Required for Import and Practice features</p>
-                <input type="password" id="api-key" placeholder="sk-ant-..." style="width: 100%; margin-top: 5px;">
-            </div>
-
-            <!-- Quiz Section -->
-            <button class="collapsible" onclick="toggleCollapsible(this)">Quiz</button>
-            <div class="collapsible-content">
-                <p style="color: #666; font-size: 13px; margin: 0 0 10px 0;"><strong>Weighting formula:</strong> weight = 1 + wrong_w × log(1+wrong) − correct_w × log(1+correct)</p>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <label style="font-size: 14px;">Wrong weight: <input type="number" id="setting-wrong-weight" value="1.0" step="0.1" min="0" style="width: 60px;"></label>
-                    <label style="font-size: 14px;">Correct weight: <input type="number" id="setting-correct-weight" value="0.5" step="0.1" min="0" style="width: 60px;"></label>
-                    <label style="font-size: 14px;">Max count: <input type="number" id="setting-max-count" value="20" step="1" min="1" style="width: 60px;"></label>
-                    <label style="font-size: 14px;">Decay: <input type="number" id="setting-decay" value="1" step="1" min="0" style="width: 60px;"></label>
-                </div>
-                <p style="color: #999; font-size: 12px; margin-top: 10px;">Higher wrong weight = focus on mistakes. Decay = how much correct reduces wrong (and vice versa).</p>
-                <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
-                <p style="color: #666; font-size: 13px; margin: 0 0 5px 0;"><strong>Reset data:</strong></p>
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button class="danger" onclick="resetStats('stats')">Reset Quiz Stats</button>
-                    <button class="danger" onclick="resetStats('char_stats')">Reset Character Stats</button>
-                    <button class="danger" onclick="resetStats('both')">Reset All</button>
-                </div>
-            </div>
-
-            <!-- Audio Section -->
-            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">Audio</button>
-            <div class="collapsible-content collapsed">
-                <label style="font-size: 14px; display: block; margin-bottom: 10px;">
-                    Mode:
-                    <select id="audio-rebuild-mode" style="margin-left: 5px;">
-                        <option value="smart">Smart rebuild (renumber + missing)</option>
-                        <option value="renumber">Renumber only (no gTTS)</option>
-                        <option value="force">Force rebuild (regenerate all)</option>
-                    </select>
-                </label>
-                <p id="audio-mode-desc" style="color: #666; font-size: 13px; margin: 0 0 10px 0;">Reuse existing audio files where possible, generate only for entries without audio.</p>
-                <button class="secondary" onclick="rebuildAudio()">Rebuild Audio</button>
-            </div>
-
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button onclick="saveSettings()">Save</button>
-                <button class="secondary" onclick="closeSettings()">Cancel</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- EDIT ENTRY MODAL -->
-    <div id="edit-modal" class="modal-overlay">
-        <div class="modal">
-            <button class="modal-close" onclick="closeEditModal()">&times;</button>
-            <h2 id="edit-modal-title">Edit Entry</h2>
-            <input type="hidden" id="edit-index">
-            <div style="margin-bottom: 15px;">
-                <label><strong>Characters</strong></label>
-                <p id="edit-chars" class="chinese" style="font-size: 32px; margin: 5px 0;"></p>
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label><strong>English</strong></label>
-                <input type="text" id="edit-english" style="width: 100%; margin-top: 5px;">
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label><strong>Pinyin</strong></label>
-                <div style="display: flex; gap: 10px; margin-top: 5px;">
-                    <input type="text" id="edit-pinyin" style="flex: 1;">
-                    <button class="secondary" onclick="lookupEditPinyin()" style="white-space: nowrap;">Lookup</button>
-                </div>
-                <div id="edit-pinyin-options" style="margin-top: 8px;"></div>
-            </div>
-            <div style="margin-bottom: 15px;">
-                <label><strong>Tags</strong></label>
-                <input type="text" id="edit-tags" placeholder="comma-separated, e.g. lesson1, greetings" style="width: 100%; margin-top: 5px;">
-            </div>
-            <div style="margin-bottom: 15px;" id="edit-audio-container"></div>
-            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
-            <div style="display: flex; gap: 10px; justify-content: space-between;">
-                <div>
-                    <button onclick="saveEditModal()">Save</button>
-                    <button class="secondary" onclick="closeEditModal()">Cancel</button>
-                </div>
-                <button class="danger" onclick="deleteFromModal()">Delete</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let quizEntries = [];
-        let quizAllEntries = [];  // Full vocab for duplicate matching (not limited by count)
-        let quizIndex = 0;
-        let quizCorrect = 0;
-        let quizTotal = 0;
-        let currentEntry = null;
-        let currentAudio = null;
-
-        // Tone mappings: toned vowel → [base vowel, tone number]
-        const tonedVowels = {
-            'ā': ['a', 1], 'á': ['a', 2], 'ǎ': ['a', 3], 'à': ['a', 4],
-            'ē': ['e', 1], 'é': ['e', 2], 'ě': ['e', 3], 'è': ['e', 4],
-            'ī': ['i', 1], 'í': ['i', 2], 'ǐ': ['i', 3], 'ì': ['i', 4],
-            'ō': ['o', 1], 'ó': ['o', 2], 'ǒ': ['o', 3], 'ò': ['o', 4],
-            'ū': ['u', 1], 'ú': ['u', 2], 'ǔ': ['u', 3], 'ù': ['u', 4],
-            'ǖ': ['ü', 1], 'ǘ': ['ü', 2], 'ǚ': ['ü', 3], 'ǜ': ['ü', 4]
-        };
-
-        // Convert toned pinyin to plain (ǐ→i, ǎ→a, etc.) and remove tone numbers/spaces
-        function stripTones(s) {
-            return s.split('').map(c => tonedVowels[c] ? tonedVowels[c][0] : c).join('')
-                    .replace(/[1-5 ]/g, '').toLowerCase();
-        }
-
-        // Convert pinyin to numbered format for tone-aware comparison
-        // "hǎo" → "hao3", "ni3 hao3" stays as is
-        function toNumberedPinyin(s) {
-            // Split into syllables (space-separated)
-            return s.toLowerCase().split(/\s+/).map(syllable => {
-                let base = '';
-                let tone = '';
-                // Check if already has tone number at end
-                const numMatch = syllable.match(/^(.+?)([1-5])$/);
-                if (numMatch) {
-                    return syllable; // Already numbered
-                }
-                // Extract tone from toned vowels
-                for (const char of syllable) {
-                    if (tonedVowels[char]) {
-                        base += tonedVowels[char][0];
-                        tone = tonedVowels[char][1];
-                    } else {
-                        base += char;
-                    }
-                }
-                return tone ? base + tone : base;
-            }).join(' ');
-        }
-
-        // Compare pinyin with tones (accepts both toned markers and numbered)
-        function comparePinyinWithTones(answer, correct) {
-            return toNumberedPinyin(answer) === toNumberedPinyin(correct);
-        }
-
-        // Levenshtein distance for fuzzy matching
-        function levenshtein(a, b) {
-            const matrix = [];
-            for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-            for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-            for (let i = 1; i <= b.length; i++) {
-                for (let j = 1; j <= a.length; j++) {
-                    matrix[i][j] = b[i-1] === a[j-1]
-                        ? matrix[i-1][j-1]
-                        : Math.min(matrix[i-1][j-1] + 1, matrix[i][j-1] + 1, matrix[i-1][j] + 1);
-                }
-            }
-            return matrix[b.length][a.length];
-        }
-
-        // Normalize English text for comparison
-        function normalizeEnglish(s) {
-            return s.toLowerCase()
-                    .replace(/^to\s+/, '')  // strip "to " prefix
-                    .replace(/\([^)]*\)/g, '') // remove (bracketed content)
-                    .replace(/\[[^\]]*\]/g, '') // remove [bracketed content]
-                    .trim();
-        }
-
-        // Match English answer against definition
-        function matchEnglish(answer, definition) {
-            const normAnswer = normalizeEnglish(answer);
-            if (!normAnswer) return false;
-
-            // Check if it's a particle definition
-            const isParticle = definition.toLowerCase().includes('particle');
-
-            // Strip brackets BEFORE splitting (to avoid splitting on commas inside brackets)
-            const defNoBrackets = definition
-                .replace(/\([^)]*\)/g, '')
-                .replace(/\[[^\]]*\]/g, '');
-
-            // Split definition by delimiters
-            const parts = defNoBrackets.split(/[\/,;]/).map(p => normalizeEnglish(p)).filter(p => p);
-
-            // If particle definition, also accept "particle" as answer
-            if (isParticle && normAnswer === 'particle') return true;
-
-            // Extract keywords from definition (words 3+ chars, excluding common words)
-            const stopWords = ['the', 'and', 'for', 'that', 'this', 'with', 'from', 'indicating', 'used', 'sth', 'someone', 'something'];
-            const keywords = definition.toLowerCase()
-                .replace(/[()[\]]/g, ' ')
-                .split(/[\s\/,;]+/)
-                .filter(w => w.length >= 3 && !stopWords.includes(w));
-
-            // Exact match on any part
-            for (const part of parts) {
-                if (normAnswer === part) return true;
-            }
-
-            // Exact match on any keyword (for particles especially)
-            if (isParticle && keywords.includes(normAnswer)) return true;
-
-            // Fuzzy match (80% similarity threshold)
-            for (const part of parts) {
-                if (part.length >= 3) {
-                    const dist = levenshtein(normAnswer, part);
-                    const similarity = 1 - dist / Math.max(normAnswer.length, part.length);
-                    if (similarity >= 0.8) return true;
-                }
-            }
-
-            return false;
-        }
-
-        // MAIN NAVIGATION
-        function showSection(sectionId) {
-            // Update nav buttons
-            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-            const btn = document.querySelector(`.nav-btn[onclick*="${sectionId}"]`);
-            if (btn) btn.classList.add('active');
-
-            // Show section
-            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            document.getElementById('section-' + sectionId).classList.add('active');
-
-            // Load data for specific sections
-            if (sectionId === 'home') loadHomeStats();
-            if (sectionId === 'learn') loadQuizStats();
-            if (sectionId === 'vocabulary') {
-                // Check which tab is active and load its data
-                const activeTab = document.querySelector('#section-vocabulary .tab-content.active');
-                if (activeTab && activeTab.id === 'vocabulary-list') refreshList();
-            }
-        }
-
-        function showSubTab(section, tabId) {
-            const sectionEl = document.getElementById('section-' + section);
-
-            // Update tab buttons within section
-            sectionEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-
-            // Show tab content within section
-            sectionEl.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.getElementById(section + '-' + tabId).classList.add('active');
-
-            // Load data for specific tabs
-            if (tabId === 'list') refreshList();
-        }
-
-        function openSettings() {
-            document.getElementById('settings-modal').classList.add('active');
-        }
-
-        function toggleCollapsible(btn) {
-            btn.classList.toggle('collapsed');
-            const content = btn.nextElementSibling;
-            content.classList.toggle('collapsed');
-        }
-
-        function closeSettings() {
-            document.getElementById('settings-modal').classList.remove('active');
-        }
-
-        // Quiz weight settings (defaults)
-        let quizSettings = {
-            wrongWeight: 1.0,
-            correctWeight: 0.5,
-            maxCount: 20,
-            decay: 1
-        };
-
-        function loadSettings() {
-            fetch('/api/config')
-                .then(r => r.json())
-                .then(config => {
-                    // Load quiz settings from config
-                    if (config.quiz) {
-                        quizSettings = {...quizSettings, ...config.quiz};
-                    }
-                    // Update UI
-                    document.getElementById('setting-wrong-weight').value = quizSettings.wrongWeight;
-                    document.getElementById('setting-correct-weight').value = quizSettings.correctWeight;
-                    document.getElementById('setting-max-count').value = quizSettings.maxCount;
-                    document.getElementById('setting-decay').value = quizSettings.decay;
-
-                    // API key status (from env var)
-                    const apiKeyInput = document.getElementById('api-key');
-                    if (config.hasApiKey) {
-                        apiKeyInput.placeholder = '(set via CLAUDE_API_KEY env var)';
-                        apiKeyInput.disabled = true;
-                    } else {
-                        apiKeyInput.placeholder = 'Set CLAUDE_API_KEY environment variable';
-                        apiKeyInput.disabled = true;
-                    }
-                })
-                .catch(err => console.error('Failed to load settings:', err));
-        }
-
-        function loadTags() {
-            fetch('/api/tags')
-                .then(r => r.json())
-                .then(data => {
-                    const tags = data.tags || [];
-                    // Populate tag filter dropdowns
-                    ['list-tag-filter', 'quiz-tag-filter'].forEach(id => {
-                        const select = document.getElementById(id);
-                        if (select) {
-                            const currentVal = select.value;
-                            select.innerHTML = '<option value="">All</option>';
-                            tags.forEach(tag => {
-                                select.innerHTML += `<option value="${tag}">${tag}</option>`;
-                            });
-                            select.value = currentVal; // Preserve selection
-                        }
-                    });
-                })
-                .catch(err => console.error('Failed to load tags:', err));
-        }
-
-        function saveSettings() {
-            quizSettings = {
-                wrongWeight: parseFloat(document.getElementById('setting-wrong-weight').value) || 1.0,
-                correctWeight: parseFloat(document.getElementById('setting-correct-weight').value) || 0.5,
-                maxCount: parseInt(document.getElementById('setting-max-count').value) || 20,
-                decay: parseInt(document.getElementById('setting-decay').value) || 1
-            };
-
-            fetch('/api/config', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({quiz: quizSettings})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    closeSettings();
-                }
-            })
-            .catch(err => console.error('Failed to save settings:', err));
-        }
-
-        // Load settings on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            loadSettings();
-            loadTags();
-        });
-
-        // EDIT MODAL
-        let editModalContext = null; // 'list' or 'lookup' - to know which to refresh
-
-        function openEditModal(index, chars, english, pinyin, dictPinyin, pypinyinPinyin, audio, context, tags) {
-            editModalContext = context || 'list';
-            document.getElementById('edit-index').value = index;
-            document.getElementById('edit-chars').textContent = chars;
-            document.getElementById('edit-english').value = english;
-            document.getElementById('edit-pinyin').value = pinyin || '';
-            document.getElementById('edit-tags').value = (tags || []).join(', ');
-            document.getElementById('edit-pinyin-options').innerHTML = '';
-
-            // Audio button
-            const audioContainer = document.getElementById('edit-audio-container');
-            if (audio) {
-                audioContainer.innerHTML = `<button class="audio-btn" onclick="playAudio('${audio}')">🔊 Play Audio</button>`;
-            } else {
-                audioContainer.innerHTML = '';
-            }
-
-            document.getElementById('edit-modal').classList.add('active');
-            document.getElementById('edit-english').focus();
-        }
-
-        function lookupEditPinyin() {
-            const chars = document.getElementById('edit-chars').textContent;
-            if (!chars) return;
-
-            fetch('/api/pinyin_lookup?chars=' + encodeURIComponent(chars))
-                .then(r => r.json())
-                .then(data => {
-                    const container = document.getElementById('edit-pinyin-options');
-                    if (!data.dict && !data.pypinyin) {
-                        container.innerHTML = '<span style="color: #999; font-size: 13px;">No pinyin found</span>';
-                        return;
-                    }
-
-                    let html = '<span style="font-size: 13px;">Choose: </span>';
-                    if (data.dict) {
-                        html += `<button class="secondary" onclick="document.getElementById('edit-pinyin').value='${data.dict}'" style="padding: 3px 8px; font-size: 13px; margin-right: 5px;">dict: ${data.dict}</button>`;
-                    }
-                    if (data.pypinyin && data.pypinyin !== data.dict) {
-                        html += `<button class="secondary" onclick="document.getElementById('edit-pinyin').value='${data.pypinyin}'" style="padding: 3px 8px; font-size: 13px;">pypinyin: ${data.pypinyin}</button>`;
-                    }
-                    container.innerHTML = html;
-                });
-        }
-
-        function closeEditModal() {
-            document.getElementById('edit-modal').classList.remove('active');
-            editModalContext = null;
-        }
-
-        function saveEditModal() {
-            const index = parseInt(document.getElementById('edit-index').value);
-            const english = document.getElementById('edit-english').value.trim();
-            const pinyinEl = document.getElementById('edit-pinyin');
-            const pinyin = pinyinEl ? (pinyinEl.value || pinyinEl.textContent).trim() : '';
-            const tagsStr = document.getElementById('edit-tags').value.trim();
-            const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
-
-            if (!english) {
-                alert('English is required');
-                return;
-            }
-
-            fetch('/api/edit', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index, english, pinyin, tags})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    closeEditModal();
-                    loadTags();  // Refresh tag dropdowns with any new tags
-                    if (editModalContext === 'lookup') doSearch();
-                    else refreshList();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            });
-        }
-
-        function deleteFromModal() {
-            const index = parseInt(document.getElementById('edit-index').value);
-            const chars = document.getElementById('edit-chars').textContent;
-            if (!confirm(`Delete "${chars}"?`)) return;
-
-            fetch('/api/delete', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    closeEditModal();
-                    if (editModalContext === 'lookup') doSearch();
-                    else refreshList();
-                    loadHomeStats();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            });
-        }
-
-        function loadHomeStats() {
-            fetch('/api/list')
-                .then(r => r.json())
-                .then(data => {
-                    const total = data.total || 0;
-                    // Update vocab card on home
-                    document.getElementById('home-vocab-count').innerHTML = `<strong>${total}</strong> words`;
-                });
-        }
-
-        function loadQuizStats() {
-            fetch('/api/list')
-                .then(r => r.json())
-                .then(data => {
-                    const total = data.total || 0;
-                    let statsHtml = `<strong>${total}</strong> words in vocabulary`;
-                    if (total > 0) {
-                        const withStats = data.vocab.filter(v => v.stats && (v.stats.correct || v.stats.wrong));
-                        if (withStats.length > 0) {
-                            const totalCorrect = withStats.reduce((sum, v) => sum + (v.stats.correct || 0), 0);
-                            const totalWrong = withStats.reduce((sum, v) => sum + (v.stats.wrong || 0), 0);
-                            statsHtml += ` · Quiz history: ${totalCorrect} ✓ / ${totalWrong} ✗`;
-                        }
-                    }
-                    document.getElementById('quiz-stats-summary').innerHTML = statsHtml;
-                });
-        }
-
-        // Load stats on page load
-        loadHomeStats();
-
-        // LOOKUP
-        let lookupQuery = '';
-        let lookupDictOffset = 0;
-
-        function doSearch(loadMore = false) {
-            const query = document.getElementById('search-input').value;
-            if (!loadMore) {
-                lookupQuery = query;
-                lookupDictOffset = 0;
-            }
-            fetch('/api/lookup?q=' + encodeURIComponent(lookupQuery) + '&offset=' + lookupDictOffset)
-                .then(r => r.json())
-                .then(data => {
-                    if (!loadMore) {
-                        let vocabHtml = '';
-                        data.vocab.forEach(v => {
-                            const idx = v._index;
-                            const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
-                            const escEnglish = v.english.replace(/'/g, "\\'");
-                            const tagsJson = JSON.stringify(v.tags || []);
-                            const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'lookup', ${tagsJson}`;
-                            vocabHtml += `<div class="vocab-item" onclick="openEditModal(${editParams})" style="cursor: pointer;">
-                                <span class="vocab-english">${v.english}</span>
-                                <span class="vocab-chars chinese">${v.characters || ''}</span>
-                                <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
-                                ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">🔊</button>` : ''}
-                            </div>`;
-                        });
-                        document.getElementById('vocab-results').innerHTML = vocabHtml || '<p>(not in vocabulary)</p>';
-                    }
-
-                    let dictHtml = loadMore ? '' : '';
-                    data.dict.forEach(d => {
-                        let pinyinDisplay = d.pinyin;
-                        if (d.pinyin_pypinyin) {
-                            pinyinDisplay = `${d.pinyin} <span style="color: #999; font-size: 12px;">(pypinyin: ${d.pinyin_pypinyin})</span>`;
-                        }
-                        dictHtml += `<div class="vocab-item">
-                            <span class="vocab-chars chinese">${d.simplified}</span>
-                            <span class="vocab-pinyin pinyin">${pinyinDisplay}</span>
-                            <span>${d.definitions.slice(0, 3).join(', ')}</span>
-                        </div>`;
-                    });
-
-                    // Count display
-                    const showing = data.dict_offset + data.dict.length;
-                    let countHtml = data.dict_total > 0 ? `<p style="color: #666; font-size: 14px;">Showing ${showing} of ${data.dict_total}</p>` : '';
-
-                    // Load more button
-                    if (data.dict_has_more) {
-                        dictHtml += `<button class="secondary" onclick="loadMoreLookup()" style="margin-top: 10px;">Load More</button>`;
-                    }
-
-                    if (loadMore) {
-                        // Append to existing results (remove old Load More button first)
-                        const container = document.getElementById('dict-results');
-                        const oldBtn = container.querySelector('button');
-                        if (oldBtn) oldBtn.remove();
-                        container.insertAdjacentHTML('beforeend', dictHtml);
-                        // Update count
-                        const countEl = document.getElementById('dict-count');
-                        if (countEl) countEl.innerHTML = countHtml;
-                    } else {
-                        document.getElementById('dict-count').innerHTML = countHtml;
-                        document.getElementById('dict-results').innerHTML = dictHtml || '';
-                    }
-                });
-        }
-
-        function loadMoreLookup() {
-            lookupDictOffset += 10;
-            doSearch(true);
-        }
-
-        function lookupEditWord(index, english, pinyin, dictPinyin, pypinyinPinyin) {
-            const englishSpan = document.getElementById(`lookup-english-${index}`);
-            const pinyinSpan = document.getElementById(`lookup-pinyin-${index}`);
-            const item = document.getElementById(`lookup-item-${index}`);
-
-            // Replace English with input
-            englishSpan.innerHTML = `<input type="text" id="lookup-edit-english-${index}" value="${english}" style="width: 150px;">`;
-
-            // Replace pinyin with selector if options exist
-            if (dictPinyin && pypinyinPinyin && dictPinyin !== pypinyinPinyin) {
-                const isDict = pinyin === dictPinyin;
-                pinyinSpan.innerHTML = `
-                    <select id="lookup-edit-pinyin-${index}">
-                        <option value="${dictPinyin}" ${isDict ? 'selected' : ''}>dict: ${dictPinyin}</option>
-                        <option value="${pypinyinPinyin}" ${!isDict ? 'selected' : ''}>pypinyin: ${pypinyinPinyin}</option>
-                    </select>`;
-            }
-
-            // Replace buttons
-            const buttons = item.querySelectorAll('button.secondary, button.danger');
-            buttons.forEach(b => b.style.display = 'none');
-            item.insertAdjacentHTML('beforeend', `
-                <button class="secondary" onclick="lookupSaveEdit(${index})" id="lookup-save-btn-${index}">Save</button>
-                <button onclick="doSearch()" id="lookup-cancel-btn-${index}">Cancel</button>
-            `);
-        }
-
-        function lookupSaveEdit(index) {
-            const englishInput = document.getElementById(`lookup-edit-english-${index}`);
-            const pinyinSelect = document.getElementById(`lookup-edit-pinyin-${index}`);
-
-            const english = englishInput ? englishInput.value.trim() : null;
-            const pinyin = pinyinSelect ? pinyinSelect.value : null;
-
-            fetch('/api/edit', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index, english, pinyin})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    doSearch();  // Refresh lookup results
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            });
-        }
-
-        function lookupDeleteWord(index, english) {
-            if (!confirm('Delete "' + english + '"?')) return;
-            fetch('/api/delete', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) doSearch();  // Refresh lookup results
-            });
-        }
-
-        document.getElementById('search-input').addEventListener('keypress', e => {
-            if (e.key === 'Enter') doSearch();
-        });
-
-        // ADD
-        let searchMatches = [];  // Store matches for pinyin selection
-        let selectedMatchIdx = -1;  // Track which match is selected
-        let addSearchQuery = '';
-        let addSearchOffset = 0;
-
-        function searchPinyin(loadMore = false) {
-            const pinyin = document.getElementById('add-pinyin').value;
-            if (!loadMore) {
-                addSearchQuery = pinyin;
-                addSearchOffset = 0;
-                searchMatches = [];
-                selectedMatchIdx = -1;
-            }
-            fetch('/api/search_pinyin?p=' + encodeURIComponent(addSearchQuery) + '&offset=' + addSearchOffset)
-                .then(r => r.json())
-                .then(data => {
-                    const baseIdx = searchMatches.length;
-                    searchMatches = searchMatches.concat(data.matches);
-
-                    let html = '';
-                    data.matches.forEach((m, i) => {
-                        const idx = baseIdx + i;
-                        let pinyinOptions = '';
-                        if (m.pinyin_pypinyin) {
-                            pinyinOptions = `<div style="margin-top: 5px; font-size: 13px;">
-                                <label><input type="radio" name="pinyin_${idx}" value="dict" checked onchange="updatePinyin(${idx})"> dict: ${m.pinyin}</label>
-                                <label style="margin-left: 10px;"><input type="radio" name="pinyin_${idx}" value="pypinyin" onchange="updatePinyin(${idx})"> pypinyin: ${m.pinyin_pypinyin}</label>
-                            </div>`;
-                        }
-                        html += `<div class="match-item" onclick="selectMatch(${idx})">
-                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${m.simplified}')" style="margin-right: 8px;">🔊</button>
-                            <span class="chinese" style="font-size: 20px;">${m.simplified}</span>
-                            <span class="pinyin">(${m.pinyin})</span>
-                            - ${m.definitions.slice(0, 2).join(', ')}
-                            ${pinyinOptions}
-                        </div>`;
-                    });
-
-                    // Count display
-                    const showing = data.offset + data.matches.length;
-                    let countHtml = data.total > 0 ? `<p style="color: #666; font-size: 14px;">Showing ${showing} of ${data.total}</p>` : '';
-
-                    // Load more button
-                    if (data.has_more) {
-                        html += `<button class="secondary" onclick="loadMoreAdd()" style="margin-top: 10px;">Load More</button>`;
-                    }
-
-                    if (loadMore) {
-                        // Append to existing results
-                        const container = document.getElementById('pinyin-matches');
-                        const oldBtn = container.querySelector('button.secondary');
-                        if (oldBtn) oldBtn.remove();
-                        container.insertAdjacentHTML('beforeend', html);
-                        document.getElementById('add-count').innerHTML = countHtml;
-                    } else {
-                        document.getElementById('add-count').innerHTML = countHtml;
-                        document.getElementById('pinyin-matches').innerHTML = html || '<p>No matches</p>';
-                    }
-                });
-        }
-
-        function loadMoreAdd() {
-            addSearchOffset += 10;
-            searchPinyin(true);
-        }
-
-        function selectMatch(idx) {
-            document.querySelectorAll('.match-item').forEach((el, i) => {
-                el.classList.toggle('selected', i === idx);
-            });
-            selectedMatchIdx = idx;
-            const m = searchMatches[idx];
-            // Check which pinyin is selected
-            let pinyin = m.pinyin;
-            if (m.pinyin_pypinyin) {
-                const radio = document.querySelector(`input[name="pinyin_${idx}"]:checked`);
-                if (radio && radio.value === 'pypinyin') {
-                    pinyin = m.pinyin_pypinyin;
-                }
-            }
-            document.getElementById('add-chars').value = m.simplified;
-            document.getElementById('add-pinyin').value = pinyin;
-            // Auto-fill English from first definition if empty
-            const englishField = document.getElementById('add-english');
-            if (!englishField.value.trim() && m.definitions.length > 0) {
-                englishField.value = m.definitions[0];
-            }
-        }
-
-        function updatePinyin(idx) {
-            // Called when radio button changes - update pinyin field if this match is selected
-            if (selectedMatchIdx !== idx) {
-                // Auto-select this match when clicking its radio button
-                selectMatch(idx);
-                return;
-            }
-            const m = searchMatches[idx];
-            const radio = document.querySelector(`input[name="pinyin_${idx}"]:checked`);
-            if (radio) {
-                document.getElementById('add-pinyin').value = (radio.value === 'pypinyin') ? m.pinyin_pypinyin : m.pinyin;
-            }
-        }
-
-        function addWord(force = false, update = false) {
-            const english = document.getElementById('add-english').value;
-            const chars = document.getElementById('add-chars').value;
-            const pinyin = document.getElementById('add-pinyin').value;
-
-            fetch('/api/add', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({english, chars, pinyin, force, update})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const action = update ? 'Updated' : 'Added';
-                    let msg = `<p style="color: green;">${action}: ${data.entry.english} - ${data.entry.characters} (${data.entry.pinyin})</p>`;
-                    if (data.pinyin_pypinyin && data.pinyin_dict) {
-                        msg += `<p style="color: #666; font-size: 14px;">Note: pypinyin="${data.pinyin_pypinyin}" vs dictionary="${data.pinyin_dict}"</p>`;
-                    }
-                    document.getElementById('add-result').innerHTML = msg;
-                    document.getElementById('add-english').value = '';
-                    document.getElementById('add-chars').value = '';
-                    document.getElementById('add-pinyin').value = '';
-                    document.getElementById('pinyin-matches').innerHTML = '';
-                    selectedMatchIdx = -1;
-                } else if (data.duplicate) {
-                    // Show duplicate warning with options
-                    const ex = data.existing;
-                    let msg = `<p style="color: orange;"><strong>⚠ Already exists:</strong> ${ex.english} - ${ex.characters} (${ex.pinyin || ''})</p>`;
-                    msg += `<p style="margin-top: 10px;">
-                        <button class="secondary" onclick="addWord(true, false)">Add Anyway</button>
-                        <button class="secondary" onclick="addWord(false, true)" style="margin-left: 10px;">Update Existing</button>
-                    </p>`;
-                    document.getElementById('add-result').innerHTML = msg;
-                } else {
-                    document.getElementById('add-result').innerHTML =
-                        `<p style="color: red;">Error: ${data.error}</p>`;
-                }
-            });
-        }
-
-        // LIST
-        let listOffset = 0;
-
-        // Calculate weight (duplicated here for list display - same as quiz)
-        function calcWeightForList(stats) {
-            const correct = stats?.correct || 0;
-            const wrong = stats?.wrong || 0;
-            const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
-            return Math.max(0.1, weight);
-        }
-
-        function refreshList(loadMore = false) {
-            if (!loadMore) listOffset = 0;
-            const showStats = document.getElementById('show-stats').checked;
-            const tagFilter = document.getElementById('list-tag-filter').value;
-            const tagParam = tagFilter ? '&tag=' + encodeURIComponent(tagFilter) : '';
-            fetch('/api/list?offset=' + listOffset + '&limit=10' + tagParam)
-                .then(r => r.json())
-                .then(data => {
-                    let html = '';
-                    data.vocab.forEach((v, i) => {
-                        const idx = data.offset + i;
-                        let pinyinDisplay = v.pinyin || '';
-                        // Store raw pinyin options for editing
-                        const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
-                        if (hasPinyinOptions) {
-                            pinyinDisplay += ` <span style="color: #999; font-size: 11px;">(dict: ${v.pinyin_dict} | pypinyin: ${v.pinyin_pypinyin})</span>`;
-                        }
-                        // Stats display (both quiz stats and character stats if present)
-                        let statsDisplay = '';
-                        if (showStats) {
-                            const qC = v.stats?.correct || 0;
-                            const qW = v.stats?.wrong || 0;
-                            const cC = v.char_stats?.correct || 0;
-                            const cW = v.char_stats?.wrong || 0;
-                            let parts = [];
-                            if (qC || qW) parts.push(`Q: ✓${qC} ✗${qW}`);
-                            if (cC || cW) parts.push(`字: ✓${cC} ✗${cW}`);
-                            if (parts.length > 0) {
-                                statsDisplay = `<span style="color: #666; font-size: 11px; margin-left: 10px;">${parts.join(' | ')}</span>`;
-                            }
-                        }
-                        const escEnglish = v.english.replace(/'/g, "\\'");
-                        const tagsJson = JSON.stringify(v.tags || []);
-                        const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'list', ${tagsJson}`;
-                        const focusStar = v.focus ? '★' : '☆';
-                        const focusStyle = v.focus ? 'color: #f0ad4e;' : 'color: #ccc;';
-                        html += `<div class="vocab-item" id="vocab-item-${idx}" onclick="openEditModal(${editParams})" style="cursor: pointer;">
-                            <span onclick="event.stopPropagation(); toggleFocus(${idx})" style="cursor: pointer; font-size: 18px; ${focusStyle}" title="Toggle focus">${focusStar}</span>
-                            <span>${idx + 1}.</span>
-                            <span class="vocab-english">${v.english}</span>
-                            <span class="vocab-chars chinese">${v.characters || ''}</span>
-                            <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
-                            ${statsDisplay}
-                            ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">🔊</button>` : ''}
-                        </div>`;
-                    });
-
-                    // Count display
-                    const showing = data.offset + data.vocab.length;
-                    let countHtml = data.total > 0 ? `<p style="color: #666; font-size: 14px;">Showing ${showing} of ${data.total}</p>` : '';
-
-                    // Load more button
-                    if (data.has_more) {
-                        html += `<button class="secondary" onclick="loadMoreList()" style="margin-top: 10px;">Load More</button>`;
-                    }
-
-                    if (loadMore) {
-                        const container = document.getElementById('vocab-list');
-                        const oldBtn = container.querySelector('button.secondary');
-                        if (oldBtn) oldBtn.remove();
-                        container.insertAdjacentHTML('beforeend', html);
-                        document.getElementById('list-count').innerHTML = countHtml;
-                    } else {
-                        document.getElementById('list-count').innerHTML = countHtml;
-                        document.getElementById('vocab-list').innerHTML = html || '<p>Vocabulary is empty</p>';
-                    }
-                });
-        }
-
-        function loadMoreList() {
-            listOffset += 10;
-            refreshList(true);
-        }
-
-        function toggleFocus(index) {
-            fetch('/api/toggle_focus', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    // Update just the star without full refresh
-                    const item = document.getElementById(`vocab-item-${index}`);
-                    if (item) {
-                        const star = item.querySelector('span[title="Toggle focus"]');
-                        if (star) {
-                            star.textContent = data.focus ? '★' : '☆';
-                            star.style.color = data.focus ? '#f0ad4e' : '#ccc';
-                        }
-                    }
-                }
-            });
-        }
-
-        function deleteWord(index) {
-            fetch('/api/list')
-                .then(r => r.json())
-                .then(data => {
-                    const entry = data.vocab[index];
-                    if (!entry) return;
-                    if (!confirm('Delete "' + entry.english + '"?')) return;
-                    fetch('/api/delete', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({index})
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.success) refreshList();
-                    });
-                });
-        }
-
-        // Audio mode descriptions
-        const audioModeDescs = {
-            smart: 'Reuse existing audio files where possible, generate only for entries without audio.',
-            renumber: 'Only rename existing files to match current indices. No gTTS calls.',
-            force: 'Regenerate all audio files from scratch (for corruption or quality issues).'
-        };
-
-        function updateAudioModeDesc() {
-            const mode = document.getElementById('audio-rebuild-mode').value;
-            document.getElementById('audio-mode-desc').textContent = audioModeDescs[mode];
-        }
-
-        // Add listener after DOM loads
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('audio-rebuild-mode').addEventListener('change', updateAudioModeDesc);
-        });
-
-        function rebuildAudio() {
-            const mode = document.getElementById('audio-rebuild-mode').value;
-            const modeNames = {smart: 'Smart rebuild', renumber: 'Renumber', force: 'Force rebuild'};
-            if (!confirm(`${modeNames[mode]}: ${audioModeDescs[mode]}\n\nProceed?`)) return;
-
-            closeSettings();
-            alert('Rebuilding audio... This runs in the background.');
-
-            fetch('/api/rebuild_audio', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({mode: mode})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    let msg = `Done: ${data.renamed} renamed`;
-                    if (data.generated !== undefined) msg += `, ${data.generated} generated`;
-                    if (data.skipped !== undefined) msg += `, ${data.skipped} skipped`;
-                    alert(msg);
-                    refreshList();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            });
-        }
-
-        function editWord(index, english, pinyin, dictPinyin, pypinyinPinyin) {
-            const englishSpan = document.getElementById(`english-${index}`);
-            const pinyinSpan = document.getElementById(`pinyin-${index}`);
-            const item = document.getElementById(`vocab-item-${index}`);
-
-            // Replace English with input
-            englishSpan.innerHTML = `<input type="text" id="edit-english-${index}" value="${english}" style="width: 150px;">`;
-
-            // Replace pinyin with selector if options exist
-            if (dictPinyin && pypinyinPinyin && dictPinyin !== pypinyinPinyin) {
-                const isDict = pinyin === dictPinyin;
-                pinyinSpan.innerHTML = `
-                    <select id="edit-pinyin-${index}">
-                        <option value="${dictPinyin}" ${isDict ? 'selected' : ''}>dict: ${dictPinyin}</option>
-                        <option value="${pypinyinPinyin}" ${!isDict ? 'selected' : ''}>pypinyin: ${pypinyinPinyin}</option>
-                    </select>`;
-            }
-
-            // Replace buttons
-            const buttons = item.querySelectorAll('button.secondary, button.danger');
-            buttons.forEach(b => b.style.display = 'none');
-            item.insertAdjacentHTML('beforeend', `
-                <button class="secondary" onclick="saveEdit(${index})" id="save-btn-${index}">Save</button>
-                <button onclick="cancelEdit()" id="cancel-btn-${index}">Cancel</button>
-            `);
-        }
-
-        function saveEdit(index) {
-            const englishInput = document.getElementById(`edit-english-${index}`);
-            const pinyinSelect = document.getElementById(`edit-pinyin-${index}`);
-
-            const english = englishInput ? englishInput.value.trim() : null;
-            const pinyin = pinyinSelect ? pinyinSelect.value : null;
-
-            fetch('/api/edit', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index, english, pinyin})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    refreshList();
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            });
-        }
-
-        function cancelEdit() {
-            refreshList();
-        }
-
-        // QUIZ
-        function resetStats(statType = 'both') {
-            const typeLabels = {
-                'stats': 'quiz stats',
-                'char_stats': 'character stats',
-                'both': 'all stats'
-            };
-            if (!confirm(`Reset ${typeLabels[statType]} to zero?`)) return;
-            fetch('/api/reset_stats', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({statType: statType})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Stats reset successfully');
-                }
-            });
-        }
-
-        // Calculate weight for weighted quiz ordering
-        function calcWeight(stats) {
-            const correct = stats?.correct || 0;
-            const wrong = stats?.wrong || 0;
-            const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
-            return Math.max(0.1, weight);  // Floor at 0.1
-        }
-
-        // Weighted random selection
-        function weightedShuffle(entries, useCharStats = false) {
-            const result = [];
-            const items = entries.map(e => ({
-                entry: e,
-                weight: calcWeight(useCharStats ? e.char_stats : e.stats)
-            }));
-
-            while (items.length > 0) {
-                const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
-                let random = Math.random() * totalWeight;
-
-                for (let i = 0; i < items.length; i++) {
-                    random -= items[i].weight;
-                    if (random <= 0) {
-                        result.push(items[i].entry);
-                        items.splice(i, 1);
-                        break;
-                    }
-                }
-            }
-            return result;
-        }
-
-        // Determine if quiz involves characters (for stats selection)
-        function quizUsesCharacters() {
-            const showMode = document.getElementById('quiz-show').value;
-            const answerMode = document.getElementById('quiz-answer').value;
-            return showMode === 'characters' || answerMode === 'characters';
-        }
-
-        function startQuiz() {
-            const tagFilter = document.getElementById('quiz-tag-filter').value;
-            const tagParam = tagFilter ? '?tag=' + encodeURIComponent(tagFilter) : '';
-            fetch('/api/list' + tagParam)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.vocab.length < 1) {
-                        alert('Need at least 1 vocabulary entry');
-                        return;
-                    }
-
-                    // Add original index to each entry for stats tracking
-                    let entriesWithIndex = data.vocab.map((v, i) => ({...v, _index: i}));
-
-                    // Filter by focus if checked
-                    const focusOnly = document.getElementById('quiz-focus-only').checked;
-                    if (focusOnly) {
-                        entriesWithIndex = entriesWithIndex.filter(v => v.focus);
-                        if (entriesWithIndex.length < 1) {
-                            alert('No focus words marked. Star some words in the List first.');
-                            return;
-                        }
-                    }
-
-                    // Determine which stats to use
-                    const useCharStats = quizUsesCharacters();
-
-                    // Apply ordering based on selection
-                    const order = document.getElementById('quiz-order').value;
-                    if (order === 'random') {
-                        quizEntries = entriesWithIndex.sort(() => Math.random() - 0.5);
-                    } else if (order === 'weighted') {
-                        quizEntries = weightedShuffle(entriesWithIndex, useCharStats);
-                    } else {
-                        // inorder - keep as is
-                        quizEntries = entriesWithIndex;
-                    }
-
-                    // Store full vocab for duplicate matching before limiting
-                    quizAllEntries = entriesWithIndex;
-
-                    // Limit to selected count (0 = all)
-                    const count = parseInt(document.getElementById('quiz-count').value);
-                    if (count > 0 && quizEntries.length > count) {
-                        quizEntries = quizEntries.slice(0, count);
-                    }
-
-                    quizIndex = 0;
-                    quizCorrect = 0;
-                    quizTotal = 0;
-                    nextQuestion();
-                });
-        }
-
-        function nextQuestion() {
-            // Hide next button, show input area
-            document.getElementById('quiz-next-btn').style.display = 'none';
-            document.getElementById('quiz-input-area').style.display = 'flex';
-
-            if (quizIndex >= quizEntries.length) {
-                document.getElementById('quiz-prompt').textContent =
-                    'Quiz Complete! ' + quizCorrect + '/' + quizTotal;
-                document.getElementById('quiz-play-audio').style.display = 'none';
-                document.getElementById('quiz-input-area').style.display = 'none';
-                return;
-            }
-
-            currentEntry = quizEntries[quizIndex];
-            currentAudio = currentEntry.audio;
-            const showMode = document.getElementById('quiz-show').value;
-            const prompt = document.getElementById('quiz-prompt');
-            const playAudioBtn = document.getElementById('quiz-play-audio');
-
-            // Show play audio button (but hide when showing English - would give away answer)
-            if (showMode === 'english') {
-                playAudioBtn.style.display = 'none';
-            } else {
-                playAudioBtn.style.display = currentAudio ? 'inline-block' : 'none';
-            }
-
-            if (showMode === 'english') {
-                prompt.textContent = currentEntry.english;
-                prompt.className = 'quiz-prompt';
-            } else if (showMode === 'characters') {
-                prompt.textContent = currentEntry.characters || '?';
-                prompt.className = 'quiz-prompt chinese';
-            } else if (showMode === 'pinyin') {
-                prompt.textContent = currentEntry.pinyin || '?';
-                prompt.className = 'quiz-prompt pinyin';
-            } else if (showMode === 'audio') {
-                prompt.textContent = '🔊';
-                prompt.className = 'quiz-prompt';
-                playQuizAudio();  // Auto-play for audio-only mode
-            }
-
-            document.getElementById('quiz-input').value = '';
-            document.getElementById('quiz-feedback').textContent = '';
-            document.getElementById('quiz-input').focus();
-        }
-
-        function playQuizAudio() {
-            if (currentAudio) playAudio(currentAudio);
-        }
-
-        function quizEditEntry() {
-            if (!currentEntry || currentEntry._index === undefined) return;
-
-            const englishSpan = document.getElementById('quiz-english-display');
-            if (!englishSpan) return;
-
-            // Replace with input
-            const currentEnglish = currentEntry.english || '';
-            englishSpan.innerHTML = `
-                <input type="text" id="quiz-edit-english" value="${currentEnglish.replace(/"/g, '&quot;')}" style="width: 200px;">
-                <button class="secondary" onclick="quizSaveEdit()" style="padding: 2px 8px; font-size: 12px;">Save</button>
-                <button onclick="quizCancelEdit('${currentEnglish.replace(/'/g, "\\'")}')" style="padding: 2px 8px; font-size: 12px;">Cancel</button>
-            `;
-            document.getElementById('quiz-edit-english').focus();
-        }
-
-        function quizSaveEdit() {
-            const input = document.getElementById('quiz-edit-english');
-            if (!input || currentEntry._index === undefined) return;
-
-            const newEnglish = input.value.trim();
-            fetch('/api/edit', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index: currentEntry._index, english: newEnglish})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    currentEntry.english = newEnglish;
-                    document.getElementById('quiz-english-display').textContent = newEnglish;
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            });
-        }
-
-        function quizCancelEdit(original) {
-            document.getElementById('quiz-english-display').textContent = original;
-        }
-
-        function quizDeleteEntry() {
-            if (!currentEntry || currentEntry._index === undefined) return;
-            if (!confirm('Delete "' + currentEntry.english + '"?')) return;
-
-            fetch('/api/delete', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({index: currentEntry._index})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    // Remove from quiz entries and continue
-                    document.getElementById('quiz-feedback').innerHTML = '<span style="color: #999;">Entry deleted</span>';
-                }
-            });
-        }
-
-        function checkAnswer() {
-            if (!currentEntry) return;
-
-            const answer = document.getElementById('quiz-input').value.trim();
-            const answerMode = document.getElementById('quiz-answer').value;
-            const feedback = document.getElementById('quiz-feedback');
-
-            let correct = false;
-            let correctAnswer = '';
-
-            if (answerMode === 'english') {
-                correctAnswer = currentEntry.english;
-                correct = matchEnglish(answer, correctAnswer);
-            } else if (answerMode === 'characters') {
-                correctAnswer = currentEntry.characters || '';
-                // Check if answer matches this entry OR any other entry with same English (for duplicates like "where")
-                const showMode = document.getElementById('quiz-show').value;
-                if (showMode === 'english') {
-                    // Accept any characters that match an entry with the same English (search full vocab, not just quiz subset)
-                    correct = quizAllEntries.some(e =>
-                        e.english === currentEntry.english && e.characters === answer
-                    );
-                } else {
-                    correct = answer === correctAnswer;
-                }
-            } else if (answerMode === 'pinyin') {
-                correctAnswer = currentEntry.pinyin || '';
-                const requireTones = document.getElementById('quiz-require-tones').checked;
-                const showMode = document.getElementById('quiz-show').value;
-
-                // Choose comparison function based on tone requirement
-                const pinyinMatch = requireTones ? comparePinyinWithTones : (a, b) => stripTones(a) === stripTones(b);
-
-                if (showMode === 'english') {
-                    // Accept any pinyin that matches an entry with the same English (search full vocab, not just quiz subset)
-                    correct = quizAllEntries.some(e =>
-                        e.english === currentEntry.english && pinyinMatch(answer, e.pinyin || '')
-                    );
-                } else {
-                    correct = pinyinMatch(answer, correctAnswer);
-                }
-            }
-
-            quizTotal++;
-            // Show full entry info: characters (pinyin) - English
-            // Include both pypinyin and dict pinyin when they differ
-            let pinyinDisplay = currentEntry.pinyin || '';
-            if (currentEntry.pinyin_pypinyin && currentEntry.pinyin_dict) {
-                pinyinDisplay = `${currentEntry.pinyin} <span style="color: #999; font-size: 14px;">(dict: ${currentEntry.pinyin_dict} | pypinyin: ${currentEntry.pinyin_pypinyin})</span>`;
-            }
-            const entryInfo = `<span class="chinese">${currentEntry.characters || ''}</span> ` +
-                `<span class="pinyin">(${pinyinDisplay})</span> - <span id="quiz-english-display">${currentEntry.english}</span>`;
-
-            // Determine which stats to use based on quiz mode
-            const useCharStats = quizUsesCharacters();
-            const currentStats = useCharStats ? currentEntry.char_stats : currentEntry.stats;
-
-            // Stats display (show what they'll be AFTER this answer)
-            let newCorrect = currentStats?.correct || 0;
-            let newWrong = currentStats?.wrong || 0;
-            if (correct) {
-                newCorrect = Math.min(quizSettings.maxCount, newCorrect + 1);
-                newWrong = Math.max(0, newWrong - quizSettings.decay);
-            } else {
-                newWrong = Math.min(quizSettings.maxCount, newWrong + 1);
-                newCorrect = Math.max(0, newCorrect - quizSettings.decay);
-            }
-            const newWeight = calcWeight({correct: newCorrect, wrong: newWrong}).toFixed(2);
-            const statsLabel = useCharStats ? '字' : '';  // Show 字 for character stats
-            const statsInfo = `<span style="color: #666; font-size: 12px; margin-left: 10px;">[${statsLabel}✓${newCorrect} ✗${newWrong} w:${newWeight}]</span>`;
-
-            // Edit/delete buttons for quiz feedback
-            const editBtns = `<span style="margin-left: 15px;">
-                <button class="secondary" onclick="quizEditEntry()" style="padding: 2px 8px; font-size: 12px;">Edit</button>
-                <button class="danger" onclick="quizDeleteEntry()" style="padding: 2px 8px; font-size: 12px;">Delete</button>
-            </span>`;
-
-            // Show audio button after answering (was hidden in English mode)
-            if (currentAudio) {
-                document.getElementById('quiz-play-audio').style.display = 'inline-block';
-            }
-
-            if (correct) {
-                quizCorrect++;
-                feedback.innerHTML = '✓ Correct! ' + entryInfo + statsInfo + editBtns;
-                feedback.className = 'quiz-feedback correct';
-            } else {
-                const yourAnswer = `<span style="color: #c00; font-size: 13px;"> (you said: "${answer}")</span>`;
-                feedback.innerHTML = '✗ Wrong.' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
-                feedback.className = 'quiz-feedback wrong';
-                if (currentEntry.audio) playAudio(currentEntry.audio);
-            }
-
-            document.getElementById('quiz-score').textContent = 'Score: ' + quizCorrect + '/' + quizTotal;
-
-            // Update stats in backend
-            if (currentEntry._index !== undefined) {
-                fetch('/api/update_stats', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        index: currentEntry._index,
-                        correct: correct,
-                        maxCount: quizSettings.maxCount,
-                        decay: quizSettings.decay,
-                        statType: useCharStats ? 'char_stats' : 'stats'
-                    })
-                });
-            }
-
-            quizIndex++;
-            // Show next button instead of auto-advancing
-            document.getElementById('quiz-input-area').style.display = 'none';
-            document.getElementById('quiz-next-btn').style.display = 'block';
-        }
-
-        document.getElementById('quiz-input').addEventListener('keypress', e => {
-            if (e.key === 'Enter') checkAnswer();
-        });
-
-        // AUDIO
-        function playAudio(path) {
-            fetch('/api/audio?path=' + encodeURIComponent(path))
-                .then(r => r.blob())
-                .then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    new Audio(url).play();
-                });
-        }
-
-        // Preview audio using gTTS (for dictionary entries not yet added)
-        function previewAudio(text) {
-            fetch('/api/preview_audio?text=' + encodeURIComponent(text))
-                .then(r => r.blob())
-                .then(blob => {
-                    const url = URL.createObjectURL(blob);
-                    new Audio(url).play();
-                })
-                .catch(err => console.error('Preview audio failed:', err));
-        }
-    </script>
-</body>
-</html>
-'''
+# Load pinyin tone characters from JSON
+DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(DATA_DIR, 'data', 'pinyin_tones.json'), 'r', encoding='utf-8') as f:
+    PINYIN_TONE_CHARS = json.load(f)
 
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    return render_template('index.html')
 
 
 @app.route('/api/lookup')
@@ -2101,6 +345,9 @@ def api_list():
             if pypinyin_ver and dict_pinyin and pypinyin_ver != dict_pinyin:
                 v['pinyin_pypinyin'] = pypinyin_ver
                 v['pinyin_dict'] = dict_pinyin
+            alt_pinyin = BY_CHARS.get(chars, {}).get('alt_pinyin')
+            if alt_pinyin:
+                v['alt_pinyin'] = alt_pinyin
         vocab_with_pypinyin.append(v)
 
     total = len(vocab_with_pypinyin)
@@ -2315,6 +562,817 @@ def api_preview_audio():
         return '', 500
 
 
+# Pinyin to representative character mapping for tone audio
+# Each entry maps pinyin (without tone) to [char_t1, char_t2, char_t3, char_t4]
+# Using common characters that clearly demonstrate each tone
+
+TONE_AUDIO_DIR = os.path.join(AUDIO_DIR, 'tones')
+
+
+def _generate_single_tone_audio(syllable, tone):
+    """Generate a gTTS MP3 for a single syllable+tone using its representative character.
+
+    Returns (filepath, None) on success or (None, error_string) on failure.
+    """
+    chars_list = PINYIN_TONE_CHARS.get(syllable)
+    if not chars_list or tone < 1 or tone > 4:
+        return None, f"No character mapping for {syllable}{tone}"
+
+    char = chars_list[tone - 1]
+    if not char:
+        return None, f"Empty character for {syllable}{tone}"
+
+    os.makedirs(TONE_AUDIO_DIR, exist_ok=True)
+    filepath = os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3")
+
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=char, lang='zh-CN')
+        tts.save(filepath)
+        return filepath, None
+    except Exception as e:
+        return None, str(e)
+
+
+@app.route('/api/generate_tone_audio', methods=['POST'])
+def api_generate_tone_audio():
+    """Batch-generate gTTS MP3 files for all syllable+tone combinations."""
+    data = request.json or {}
+    force = data.get('force', False)
+
+    generated = 0
+    skipped = 0
+    failed = 0
+    failures = []
+
+    os.makedirs(TONE_AUDIO_DIR, exist_ok=True)
+
+    for syllable, chars_list in PINYIN_TONE_CHARS.items():
+        for tone in range(1, 5):
+            filepath = os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3")
+
+            if not force and os.path.exists(filepath):
+                skipped += 1
+                continue
+
+            path, error = _generate_single_tone_audio(syllable, tone)
+            if path:
+                generated += 1
+            else:
+                failed += 1
+                failures.append({'syllable': syllable, 'tone': tone, 'error': error})
+
+    return jsonify({
+        'success': True,
+        'generated': generated,
+        'skipped': skipped,
+        'failed': failed,
+        'failures': failures
+    })
+
+
+@app.route('/api/tone_audio')
+def api_tone_audio():
+    """Serve tone practice audio: pre-generated gTTS MP3 if available, else espeak-ng fallback."""
+    from flask import send_file
+
+    pinyin = request.args.get('pinyin', '').strip().lower()
+    tone = request.args.get('tone', '1')
+
+    try:
+        tone = int(tone)
+        if tone < 1 or tone > 4:
+            tone = 1
+    except ValueError:
+        tone = 1
+
+    if not pinyin:
+        return '', 400
+
+    # Try pre-generated gTTS MP3 first
+    mp3_path = os.path.join(TONE_AUDIO_DIR, f"{pinyin}{tone}.mp3")
+    if os.path.exists(mp3_path):
+        response = send_file(mp3_path, mimetype='audio/mpeg')
+        response.headers['X-Audio-Source'] = 'gtts'
+        return response
+
+    # Fall back to espeak-ng
+    try:
+        import subprocess
+        import tempfile
+        from io import BytesIO
+
+        pinyin_ascii = pinyin.replace('ü', 'v')
+        pinyin_with_tone = f"{pinyin_ascii}{tone}"
+
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        result = subprocess.run(
+            ['espeak-ng', '-v', 'cmn-latn-pinyin', '-s', '90', '-g', '10', '-w', tmp_path, pinyin_with_tone],
+            capture_output=True, text=True
+        )
+
+        if result.returncode != 0:
+            print(f"espeak-ng error: {result.stderr}")
+            return '', 500
+
+        with open(tmp_path, 'rb') as f:
+            wav_data = BytesIO(f.read())
+
+        os.unlink(tmp_path)
+
+        wav_data.seek(0)
+        response = send_file(wav_data, mimetype='audio/wav')
+        response.headers['X-Audio-Source'] = 'espeak-ng'
+        return response
+    except Exception as e:
+        print(f"Tone audio error for {pinyin} tone {tone}: {e}")
+        return '', 500
+
+
+# ============================================================================
+# TONE AUDIO CURATION API
+# ============================================================================
+
+TONE_REVIEWED_FILE = os.path.join(DATA_DIR, 'data', 'pinyin_tones_reviewed.json')
+
+
+def _load_tone_reviewed():
+    """Load review decisions for tone character mappings."""
+    if os.path.exists(TONE_REVIEWED_FILE):
+        with open(TONE_REVIEWED_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {}
+
+
+def _save_tone_reviewed(reviewed):
+    """Save review decisions."""
+    with open(TONE_REVIEWED_FILE, 'w', encoding='utf-8') as f:
+        json.dump(reviewed, f, ensure_ascii=False, indent=2)
+
+
+def _find_cedict_single_chars(syllable, tone):
+    """Find single-character CC-CEDICT entries matching a syllable+tone.
+
+    Returns list of dicts: [{char, pinyin, definition, polyphone}]
+    """
+    # BY_PINYIN keys are toneless+spaceless
+    entries = BY_PINYIN.get(syllable, [])
+    results = []
+    seen_chars = set()
+
+    for entry in entries:
+        simp = entry['simplified']
+        # Only single characters
+        if len(simp) != 1:
+            continue
+        if simp in seen_chars:
+            continue
+
+        # Check tone matches
+        numbered = entry['pinyin_numbered'].strip().lower()
+        if numbered != f"{syllable}{tone}":
+            continue
+
+        seen_chars.add(simp)
+        is_polyphone = 'alt_pinyin' in entry
+        results.append({
+            'char': simp,
+            'pinyin': entry['pinyin'],
+            'definition': '; '.join(entry['definitions'][:3]),
+            'polyphone': is_polyphone
+        })
+
+    # Sort: non-polyphones first, then by definition length (shorter = more common heuristic)
+    results.sort(key=lambda x: (x['polyphone'], len(x['definition'])))
+    return results
+
+
+def _analyse_tone_entry(syllable, tone, char, all_chars_for_syllable):
+    """Analyse a single syllable+tone+char mapping and return flags."""
+    flags = []
+
+    # Flag 1: duplicate character across tones
+    tone_idx = tone - 1
+    other_tones_chars = [all_chars_for_syllable[i] for i in range(4) if i != tone_idx]
+    if char in other_tones_chars:
+        flags.append('duplicate_char')
+
+    # Flag 2: CEDICT mismatch — check if this char has this syllable+tone reading
+    cedict_entry = BY_CHARS.get(char)
+    if cedict_entry:
+        numbered = cedict_entry['pinyin_numbered'].strip().lower()
+        # For single chars, pinyin_numbered should be just "syllableN"
+        # But BY_CHARS may have the last-seen entry; check alt_pinyin too
+        has_reading = numbered == f"{syllable}{tone}"
+        if not has_reading and 'alt_pinyin' in cedict_entry:
+            # alt_pinyin has toned pinyin, need to check differently
+            # Look up all entries for this character
+            for entry in BY_PINYIN.get(syllable, []):
+                if entry['simplified'] == char or entry['traditional'] == char:
+                    if entry['pinyin_numbered'].strip().lower() == f"{syllable}{tone}":
+                        has_reading = True
+                        break
+        if not has_reading:
+            flags.append('cedict_mismatch')
+    else:
+        # Character not in CEDICT at all
+        flags.append('cedict_missing')
+
+    # Flag 3: polyphone risk
+    if cedict_entry and 'alt_pinyin' in cedict_entry:
+        flags.append('polyphone')
+
+    return flags
+
+
+def _get_tone_status(syllable, tone, char, chars_list, reviewed):
+    """Get status and flags for a single syllable+tone entry."""
+    key = f"{syllable}{tone}"
+    flags = _analyse_tone_entry(syllable, tone, char, chars_list)
+    review_state = reviewed.get(key)
+
+    if review_state == 'accepted':
+        status = 'accepted'
+    elif review_state == 'espeak':
+        status = 'espeak'
+    elif flags:
+        status = 'flagged'
+    else:
+        status = 'unflagged'
+
+    has_mp3 = os.path.exists(os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3"))
+
+    return {
+        'tone': tone,
+        'char': char,
+        'flags': flags,
+        'status': status,
+        'has_mp3': has_mp3
+    }
+
+
+@app.route('/api/tone_curation/analyse')
+def api_tone_curation_analyse():
+    """Analyse pinyin_tones.json grouped by syllable, all 4 tones per entry."""
+    include_reviewed = request.args.get('include_reviewed', 'false') == 'true'
+    reviewed = _load_tone_reviewed()
+
+    syllables_data = []
+    total_flagged_tones = 0
+    total_reviewed = 0
+    total_unreviewed = 0
+
+    for syllable, chars_list in PINYIN_TONE_CHARS.items():
+        tones_data = []
+        has_flagged = False
+        has_unreviewed = False
+        all_accepted = True
+
+        for tone in range(1, 5):
+            char = chars_list[tone - 1]
+            info = _get_tone_status(syllable, tone, char, chars_list, reviewed)
+
+            if info['flags']:
+                total_flagged_tones += 1
+                has_flagged = True
+                if info['status'] == 'accepted':
+                    total_reviewed += 1
+                elif info['status'] != 'espeak':
+                    total_unreviewed += 1
+                    has_unreviewed = True
+
+            if info['status'] not in ('accepted', 'unflagged'):
+                all_accepted = False
+
+            # Fetch alternatives for flagged/espeak tones
+            if info['flags'] or info['status'] == 'espeak':
+                alternatives = _find_cedict_single_chars(syllable, tone)
+                alternatives = [a for a in alternatives if a['char'] != char]
+                info['alternatives'] = alternatives[:8]
+            else:
+                info['alternatives'] = []
+
+            tones_data.append(info)
+
+        # Filter: only include syllables matching criteria
+        if not has_flagged:
+            continue  # No flags at all — nothing to curate
+        if not include_reviewed and not has_unreviewed:
+            continue  # All flagged tones already reviewed — skip unless showing reviewed
+
+        syllables_data.append({
+            'syllable': syllable,
+            'tones': tones_data
+        })
+
+    return jsonify({
+        'syllables': syllables_data,
+        'summary': {
+            'total_syllables': len(syllables_data),
+            'total_flagged_tones': total_flagged_tones,
+            'reviewed': total_reviewed,
+            'unreviewed': total_unreviewed
+        }
+    })
+
+
+@app.route('/api/tone_curation/update', methods=['POST'])
+def api_tone_curation_update():
+    """Accept or replace a tone character mapping."""
+    data = request.json or {}
+    syllable = data.get('syllable', '')
+    tone = data.get('tone', 0)
+    action = data.get('action', '')
+
+    if not syllable or tone < 1 or tone > 4 or action not in ('accept', 'replace', 'espeak'):
+        return jsonify({'success': False, 'error': 'Invalid parameters'}), 400
+
+    key = f"{syllable}{tone}"
+    reviewed = _load_tone_reviewed()
+
+    if action == 'accept':
+        reviewed[key] = 'accepted'
+        _save_tone_reviewed(reviewed)
+        return jsonify({'success': True, 'action': 'accepted'})
+
+    elif action == 'replace':
+        new_char = data.get('new_char', '')
+        if not new_char:
+            return jsonify({'success': False, 'error': 'No replacement character'}), 400
+
+        # Update pinyin_tones.json
+        PINYIN_TONE_CHARS[syllable][tone - 1] = new_char
+        tones_file = os.path.join(DATA_DIR, 'data', 'pinyin_tones.json')
+        with open(tones_file, 'w', encoding='utf-8') as f:
+            json.dump(PINYIN_TONE_CHARS, f, ensure_ascii=False, indent=2)
+
+        # Regenerate audio for this syllable+tone
+        path, error = _generate_single_tone_audio(syllable, tone)
+
+        reviewed[key] = 'accepted'
+        _save_tone_reviewed(reviewed)
+
+        return jsonify({
+            'success': True,
+            'action': 'replaced',
+            'new_char': new_char,
+            'audio_error': error
+        })
+
+    elif action == 'espeak':
+        # Delete pre-generated MP3 so /api/tone_audio falls back to espeak-ng
+        mp3_path = os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3")
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+
+        reviewed[key] = 'espeak'
+        _save_tone_reviewed(reviewed)
+        return jsonify({'success': True, 'action': 'espeak'})
+
+
+@app.route('/api/tone_curation/reset', methods=['POST'])
+def api_tone_curation_reset():
+    """Reset review decisions."""
+    data = request.json or {}
+
+    if data.get('all'):
+        _save_tone_reviewed({})
+        return jsonify({'success': True, 'reset': 'all'})
+
+    syllable = data.get('syllable', '')
+    tone = data.get('tone', 0)
+    if not syllable or tone < 1 or tone > 4:
+        return jsonify({'success': False, 'error': 'Invalid parameters'}), 400
+
+    key = f"{syllable}{tone}"
+    reviewed = _load_tone_reviewed()
+    reviewed.pop(key, None)
+    _save_tone_reviewed(reviewed)
+    return jsonify({'success': True, 'reset': key})
+
+
+@app.route('/api/tone_curation/status')
+def api_tone_curation_status():
+    """Get curation status for all 4 tones of a syllable."""
+    syllable = request.args.get('syllable', '').strip().lower()
+    if not syllable or syllable not in PINYIN_TONE_CHARS:
+        return jsonify({'error': 'Invalid syllable'}), 400
+
+    chars_list = PINYIN_TONE_CHARS[syllable]
+    reviewed = _load_tone_reviewed()
+
+    tones = []
+    for tone in range(1, 5):
+        char = chars_list[tone - 1]
+        info = _get_tone_status(syllable, tone, char, chars_list, reviewed)
+
+        # Include alternatives for actionable tones
+        if info['flags'] or info['status'] == 'espeak':
+            alternatives = _find_cedict_single_chars(syllable, tone)
+            alternatives = [a for a in alternatives if a['char'] != char]
+            info['alternatives'] = alternatives[:8]
+        else:
+            info['alternatives'] = []
+
+        tones.append(info)
+
+    return jsonify({
+        'syllable': syllable,
+        'tones': tones
+    })
+
+
+@app.route('/api/tone_audio_espeak_preview')
+def api_tone_audio_espeak_preview():
+    """Generate on-the-fly espeak-ng audio for a pinyin+tone (not saved to disk)."""
+    from flask import send_file
+    from io import BytesIO
+    import subprocess
+    import tempfile
+
+    pinyin = request.args.get('pinyin', '').strip().lower()
+    tone = request.args.get('tone', '1')
+    try:
+        tone = int(tone)
+    except ValueError:
+        tone = 1
+
+    if not pinyin:
+        return '', 400
+
+    pinyin_ascii = pinyin.replace('ü', 'v')
+    pinyin_with_tone = f"{pinyin_ascii}{tone}"
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        result = subprocess.run(
+            ['espeak-ng', '-v', 'cmn-latn-pinyin', '-s', '90', '-g', '10', '-w', tmp_path, pinyin_with_tone],
+            capture_output=True, text=True
+        )
+
+        if result.returncode != 0:
+            return '', 500
+
+        with open(tmp_path, 'rb') as f:
+            wav_data = BytesIO(f.read())
+
+        os.unlink(tmp_path)
+        wav_data.seek(0)
+        return send_file(wav_data, mimetype='audio/wav')
+    except Exception as e:
+        print(f"Espeak preview error for {pinyin}{tone}: {e}")
+        return '', 500
+
+
+@app.route('/api/tone_audio_preview')
+def api_tone_audio_preview():
+    """Generate on-the-fly gTTS audio for a character (not saved to disk)."""
+    from flask import send_file
+    from io import BytesIO
+
+    char = request.args.get('char', '').strip()
+    if not char:
+        return '', 400
+
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=char, lang='zh-CN')
+        buf = BytesIO()
+        tts.write_to_fp(buf)
+        buf.seek(0)
+        return send_file(buf, mimetype='audio/mpeg')
+    except Exception as e:
+        print(f"Preview audio error for '{char}': {e}")
+        return '', 500
+
+
+# ============================================================================
+# TONE PRACTICE API
+# ============================================================================
+
+# Pinyin initial groups for filtering
+PINYIN_INITIAL_GROUPS = {
+    'none': [''],
+    'labial': ['b', 'p', 'm', 'f'],
+    'alveolar': ['d', 't', 'n', 'l'],
+    'velar': ['g', 'k', 'h'],
+    'palatal': ['j', 'q', 'x'],
+    'retroflex': ['zh', 'ch', 'sh', 'r'],
+    'dental': ['z', 'c', 's'],
+    'semivowel': ['y', 'w'],
+}
+
+# All valid initials
+ALL_INITIALS = ['', 'b', 'p', 'm', 'f', 'd', 't', 'n', 'l', 'g', 'k', 'h',
+                'j', 'q', 'x', 'zh', 'ch', 'sh', 'r', 'z', 'c', 's', 'y', 'w']
+
+
+def get_pinyin_initial(syllable):
+    """Extract the initial consonant from a pinyin syllable."""
+    for initial in ['zh', 'ch', 'sh']:  # Check digraphs first
+        if syllable.startswith(initial):
+            return initial
+    for initial in ALL_INITIALS:
+        if initial and syllable.startswith(initial):
+            return initial
+    return ''
+
+
+def get_pinyin_final(syllable):
+    """Extract the final (vowel part) from a pinyin syllable."""
+    initial = get_pinyin_initial(syllable)
+    return syllable[len(initial):]
+
+
+def load_pinyin_stats():
+    """Load tone practice statistics from file."""
+    stats_file = os.path.join(DATA_DIR, 'data', 'pinyin_stats.json')
+    if os.path.exists(stats_file):
+        with open(stats_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {'tones': {}, 'initials': {}, 'finals': {}}
+
+
+def save_pinyin_stats(stats):
+    """Save tone practice statistics to file."""
+    stats_file = os.path.join(DATA_DIR, 'data', 'pinyin_stats.json')
+    with open(stats_file, 'w', encoding='utf-8') as f:
+        json.dump(stats, f, ensure_ascii=False, indent=2)
+
+
+@app.route('/api/tone_practice/syllables')
+def api_tone_practice_syllables():
+    """Get available syllables based on filters."""
+    initial_group = request.args.get('initial', 'all')
+    tones_filter = request.args.get('tones', 'all')
+
+    # Get all syllables from PINYIN_TONE_CHARS
+    all_syllables = list(PINYIN_TONE_CHARS.keys())
+
+    # Filter by initial group
+    if initial_group != 'all':
+        if initial_group in PINYIN_INITIAL_GROUPS:
+            allowed_initials = PINYIN_INITIAL_GROUPS[initial_group]
+            all_syllables = [s for s in all_syllables
+                            if get_pinyin_initial(s) in allowed_initials]
+
+    # Parse tones filter
+    if tones_filter == 'all':
+        allowed_tones = [1, 2, 3, 4]
+    else:
+        allowed_tones = [int(t) for t in tones_filter.split(',') if t.isdigit()]
+
+    return jsonify({
+        'syllables': all_syllables,
+        'tones': allowed_tones,
+        'count': len(all_syllables) * len(allowed_tones)
+    })
+
+
+@app.route('/api/tone_practice/question')
+def api_tone_practice_question():
+    """Generate a random question for tone practice."""
+    mode = request.args.get('mode', 'tone_id')
+    initial_group = request.args.get('initial', 'all')
+    tones_filter = request.args.get('tones', 'all')
+    weighted = request.args.get('weighted', 'false') == 'true'
+
+    # Get filtered syllables
+    all_syllables = list(PINYIN_TONE_CHARS.keys())
+
+    if initial_group != 'all':
+        if initial_group in PINYIN_INITIAL_GROUPS:
+            allowed_initials = PINYIN_INITIAL_GROUPS[initial_group]
+            all_syllables = [s for s in all_syllables
+                            if get_pinyin_initial(s) in allowed_initials]
+
+    if not all_syllables:
+        return jsonify({'error': 'No syllables match the filter'}), 400
+
+    # Parse tones filter
+    if tones_filter == 'all':
+        allowed_tones = [1, 2, 3, 4]
+    else:
+        allowed_tones = [int(t) for t in tones_filter.split(',') if t.isdigit()]
+
+    if not allowed_tones:
+        allowed_tones = [1, 2, 3, 4]
+
+    # Load stats for weighted selection
+    stats = load_pinyin_stats()
+    config = load_config()
+    wrong_weight = config.get('quiz', {}).get('wrongWeight', 1.0)
+    correct_weight = config.get('quiz', {}).get('correctWeight', 0.5)
+    max_count = config.get('quiz', {}).get('maxCount', 20)
+
+    # Build list of (syllable, tone) pairs with weights
+    candidates = []
+    for syllable in all_syllables:
+        for tone in allowed_tones:
+            weight = 1.0
+            if weighted and syllable in stats.get('tones', {}):
+                tone_stats = stats['tones'][syllable].get(str(tone), [0, 0])
+                # Clamp to maxCount so lowering the setting takes effect immediately
+                correct = min(max_count, tone_stats[0])
+                wrong = min(max_count, tone_stats[1])
+                # Weight formula: more wrong = higher weight
+                import math
+                weight = 1 + wrong_weight * math.log1p(wrong) - correct_weight * math.log1p(correct)
+                weight = max(0.1, weight)  # Minimum weight
+            candidates.append((syllable, tone, weight))
+
+    if not candidates:
+        return jsonify({'error': 'No valid syllable-tone combinations'}), 400
+
+    # Weighted random selection
+    if weighted:
+        total_weight = sum(c[2] for c in candidates)
+        r = random.random() * total_weight
+        cumulative = 0
+        selected = candidates[0]
+        for c in candidates:
+            cumulative += c[2]
+            if cumulative >= r:
+                selected = c
+                break
+        syllable, tone = selected[0], selected[1]
+    else:
+        syllable, tone = random.choice([(c[0], c[1]) for c in candidates])
+
+    # Get the representative character
+    char = PINYIN_TONE_CHARS[syllable][tone - 1]
+
+    # Build response based on mode
+    initial = get_pinyin_initial(syllable)
+    final = get_pinyin_final(syllable)
+
+    # Determine what to reveal and what to ask
+    reveal = {}
+    ask = 'tone'
+
+    if mode == 'tone_id':
+        reveal = {'syllable': syllable}
+        ask = 'tone'
+    elif mode == 'syllable_id':
+        reveal = {'tone': tone}
+        ask = 'syllable'
+    elif mode == 'initial_id':
+        reveal = {'tone': tone, 'final': final}
+        ask = 'initial'
+    elif mode == 'full_id':
+        reveal = {}
+        ask = 'full'
+
+    # Generate options for multiple choice (except full_id)
+    options = []
+    if ask == 'tone':
+        options = allowed_tones
+    elif ask == 'syllable':
+        # Pick some confusable syllables
+        similar = [s for s in all_syllables if s != syllable]
+        random.shuffle(similar)
+        options = [syllable] + similar[:5]
+        random.shuffle(options)
+    elif ask == 'initial':
+        # Get confusable initials from same group or nearby
+        initial_group_name = None
+        for group, initials in PINYIN_INITIAL_GROUPS.items():
+            if initial in initials:
+                initial_group_name = group
+                break
+        if initial_group_name:
+            options = list(PINYIN_INITIAL_GROUPS[initial_group_name])
+        else:
+            options = [initial, 'b', 'p', 'd', 't', 'g', 'k']
+        if initial not in options:
+            options.append(initial)
+        random.shuffle(options)
+        options = options[:6]
+
+    return jsonify({
+        'syllable': syllable,
+        'tone': tone,
+        'initial': initial,
+        'final': final,
+        'char': char,
+        'reveal': reveal,
+        'ask': ask,
+        'options': options,
+        'mode': mode
+    })
+
+
+@app.route('/api/tone_practice/answer', methods=['POST'])
+def api_tone_practice_answer():
+    """Submit an answer and update stats."""
+    data = request.json
+    syllable = data.get('syllable', '')
+    tone = data.get('tone', 1)
+    answer = data.get('answer')
+    ask_type = data.get('ask', 'tone')
+
+    # Determine if correct
+    correct = False
+    correct_answer = None
+
+    if ask_type == 'tone':
+        correct_answer = tone
+        correct = (answer == tone)
+    elif ask_type == 'syllable':
+        correct_answer = syllable
+        correct = (answer == syllable)
+    elif ask_type == 'initial':
+        correct_answer = get_pinyin_initial(syllable)
+        correct = (answer == correct_answer)
+    elif ask_type == 'full':
+        # Answer should be like "ma3" or "ma 3"
+        answer_clean = str(answer).replace(' ', '').lower()
+        correct_answer = f"{syllable}{tone}"
+        correct = (answer_clean == correct_answer)
+
+    # Update stats
+    stats = load_pinyin_stats()
+    config = load_config()
+    max_count = config.get('quiz', {}).get('maxCount', 20)
+    decay = config.get('quiz', {}).get('decay', 1)
+
+    # Update tone stats
+    if 'tones' not in stats:
+        stats['tones'] = {}
+    if syllable not in stats['tones']:
+        stats['tones'][syllable] = {}
+    tone_key = str(tone)
+    if tone_key not in stats['tones'][syllable]:
+        stats['tones'][syllable][tone_key] = [0, 0]
+
+    if correct:
+        stats['tones'][syllable][tone_key][0] = min(max_count,
+            stats['tones'][syllable][tone_key][0] + 1)
+        stats['tones'][syllable][tone_key][1] = max(0,
+            stats['tones'][syllable][tone_key][1] - decay)
+    else:
+        stats['tones'][syllable][tone_key][1] = min(max_count,
+            stats['tones'][syllable][tone_key][1] + 1)
+        stats['tones'][syllable][tone_key][0] = max(0,
+            stats['tones'][syllable][tone_key][0] - decay)
+
+    # Update initial stats if relevant
+    if ask_type == 'initial':
+        initial = get_pinyin_initial(syllable)
+        if 'initials' not in stats:
+            stats['initials'] = {}
+        if initial not in stats['initials']:
+            stats['initials'][initial] = [0, 0]
+        if correct:
+            stats['initials'][initial][0] = min(max_count, stats['initials'][initial][0] + 1)
+            stats['initials'][initial][1] = max(0, stats['initials'][initial][1] - decay)
+        else:
+            stats['initials'][initial][1] = min(max_count, stats['initials'][initial][1] + 1)
+            stats['initials'][initial][0] = max(0, stats['initials'][initial][0] - decay)
+
+    save_pinyin_stats(stats)
+
+    return jsonify({
+        'correct': correct,
+        'correctAnswer': correct_answer,
+        'stats': stats['tones'].get(syllable, {}).get(tone_key, [0, 0])
+    })
+
+
+@app.route('/api/tone_practice/stats')
+def api_tone_practice_stats():
+    """Get tone practice statistics."""
+    stats = load_pinyin_stats()
+    return jsonify(stats)
+
+
+@app.route('/api/tone_practice/reset', methods=['POST'])
+def api_tone_practice_reset():
+    """Reset tone practice statistics."""
+    data = request.json or {}
+    stat_type = data.get('type', 'all')  # 'tones', 'initials', 'finals', or 'all'
+
+    stats = load_pinyin_stats()
+
+    if stat_type in ('tones', 'all'):
+        stats['tones'] = {}
+    if stat_type in ('initials', 'all'):
+        stats['initials'] = {}
+    if stat_type in ('finals', 'all'):
+        stats['finals'] = {}
+
+    save_pinyin_stats(stats)
+    return jsonify({'success': True, 'type': stat_type})
+
+
+# ============================================================================
+# CONFIG API
+# ============================================================================
+
 @app.route('/api/config')
 def api_get_config():
     """Get configuration."""
@@ -2336,6 +1394,374 @@ def api_save_config():
 
     save_config(config)
     return jsonify({'success': True, 'config': config})
+
+
+# ============================================================================
+# IMPORT API
+# ============================================================================
+
+IMPORT_DIR = os.path.join(DATA_DIR, 'data', 'import')
+SCHEMA_PATH = os.path.join(DATA_DIR, 'schemas', 'extraction_schema.json')
+
+
+def load_extraction_schema():
+    """Load the extraction JSON schema."""
+    if os.path.exists(SCHEMA_PATH):
+        with open(SCHEMA_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return None
+
+
+def validate_extraction(data, schema):
+    """Basic validation of extraction data against schema."""
+    errors = []
+
+    # Check required fields
+    if 'source' not in data:
+        errors.append("Missing required field: source")
+    if 'vocabulary' not in data:
+        errors.append("Missing required field: vocabulary")
+    elif not isinstance(data['vocabulary'], list):
+        errors.append("vocabulary must be an array")
+
+    # Validate vocabulary items
+    if 'vocabulary' in data and isinstance(data['vocabulary'], list):
+        for i, item in enumerate(data['vocabulary']):
+            if 'english' not in item:
+                errors.append(f"vocabulary[{i}]: missing 'english'")
+            if 'characters' not in item:
+                errors.append(f"vocabulary[{i}]: missing 'characters'")
+
+    return errors
+
+
+def normalize_pinyin(pinyin_str):
+    """Normalize pinyin for comparison: lowercase, apostrophes→spaces, collapse whitespace."""
+    if not pinyin_str:
+        return ''
+    # Replace apostrophes with spaces (kě'ài → kě ài)
+    normalized = pinyin_str.lower().replace("'", " ").replace("'", " ")
+    # Collapse multiple spaces
+    return ' '.join(normalized.split())
+
+
+def compare_with_dictionary(item, by_chars):
+    """Compare extracted item with CC-CEDICT dictionary.
+
+    Uses pypinyin as the primary reference (like the Add functionality does),
+    since BY_CHARS may store rare/alternate readings for multi-reading characters.
+    Also detects tone sandhi by comparing against dictionary citation form.
+    """
+    chars = item.get('characters', '')
+    extracted_pinyin = item.get('pinyin', '')
+
+    if not chars:
+        return {'status': 'no_chars', 'dict_entry': None}
+
+    # Get pypinyin version - this is our trusted reference (same as Add functionality)
+    pypinyin_result = chars_to_pinyin(chars) if chars else None
+
+    # Look up in dictionary (BY_CHARS maps chars -> single entry dict)
+    # Note: BY_CHARS may have wrong reading for multi-reading chars (e.g. 大 dài instead of dà)
+    dict_entry = by_chars.get(chars)
+
+    # Get dictionary info (may be wrong for multi-reading characters, or missing for compounds)
+    dict_pinyin = dict_entry.get('pinyin', '') if dict_entry else ''
+    dict_definitions = dict_entry.get('definitions', []) if dict_entry else []
+    dict_english = '; '.join(dict_definitions[:3]) if dict_definitions else ''
+
+    if not extracted_pinyin:
+        # No pinyin to compare
+        if dict_entry:
+            return {'status': 'match', 'dict_entry': dict_entry}
+        elif pypinyin_result:
+            # Not in dict but pypinyin can handle it
+            return {'status': 'match', 'dict_entry': None}
+        return {'status': 'not_in_dict', 'dict_entry': None}
+
+    # Normalised versions for comparison (handles apostrophes like kě'ài → kě ài)
+    ext_norm = normalize_pinyin(extracted_pinyin)
+    pypinyin_norm = normalize_pinyin(pypinyin_result)
+    dict_norm = normalize_pinyin(dict_pinyin)
+
+    # Strip tones for base comparison
+    extracted_plain = strip_tones(ext_norm.replace(' ', ''))
+    pypinyin_plain = strip_tones(pypinyin_norm.replace(' ', '')) if pypinyin_norm else None
+    dict_plain = strip_tones(dict_norm.replace(' ', '')) if dict_norm else None
+
+    # Check if extracted matches pypinyin (our trusted reference)
+    matches_pypinyin = pypinyin_norm and ext_norm == pypinyin_norm
+    # Check if extracted matches dictionary (citation form)
+    matches_dict = dict_norm and ext_norm == dict_norm
+    # Check if pypinyin differs from dictionary (indicates sandhi or alternate reading)
+    pypinyin_differs_from_dict = pypinyin_norm and dict_norm and pypinyin_norm != dict_norm
+
+    if matches_pypinyin:
+        # Extracted matches pypinyin - correct
+        if pypinyin_differs_from_dict and dict_plain == pypinyin_plain:
+            # pypinyin differs from dict only in tones (same base) - this is sandhi
+            # Textbook uses the spoken/sandhi form which matches pypinyin
+            return {
+                'status': 'sandhi_variant',
+                'dict_entry': dict_entry,
+                'dict_pinyin': dict_pinyin,
+                'pypinyin': pypinyin_result,
+                'dict_english': dict_english
+            }
+        # Regular match
+        return {'status': 'match', 'dict_entry': dict_entry}
+
+    if matches_dict:
+        # Extracted matches dictionary citation form exactly
+        return {'status': 'match', 'dict_entry': dict_entry}
+
+    # Check if base pinyin matches (could be sandhi with tones differing)
+    if pypinyin_plain and extracted_plain == pypinyin_plain:
+        # Base matches pypinyin but tones differ - likely sandhi
+        return {
+            'status': 'sandhi_variant',
+            'dict_entry': dict_entry,
+            'dict_pinyin': dict_pinyin,
+            'pypinyin': pypinyin_result,
+            'dict_english': dict_english
+        }
+
+    # Not in dictionary but matches pypinyin
+    if not dict_entry and pypinyin_norm and ext_norm == pypinyin_norm:
+        return {'status': 'match', 'dict_entry': None}
+
+    # No match - real conflict
+    if not dict_entry and not pypinyin_result:
+        return {'status': 'not_in_dict', 'dict_entry': None}
+
+    return {
+        'status': 'pinyin_differs',
+        'dict_entry': dict_entry,
+        'dict_pinyin': dict_pinyin,
+        'pypinyin': pypinyin_result,
+        'dict_english': dict_english
+    }
+
+
+@app.route('/api/import/lessons')
+def api_import_lessons():
+    """List available lesson extractions.
+
+    Recursively scans data/import/ for extracted.json files.
+    Supports nested folders like: book_name/lesson_3/extracted.json
+    Directory naming is flexible - lesson info comes from the JSON content.
+    """
+    lessons = []
+
+    if not os.path.exists(IMPORT_DIR):
+        return jsonify({'lessons': []})
+
+    # Recursively find all extracted.json files
+    for root, dirs, files in os.walk(IMPORT_DIR):
+        if 'extracted.json' in files:
+            extracted_path = os.path.join(root, 'extracted.json')
+            # Get relative path from IMPORT_DIR for the lesson ID
+            rel_path = os.path.relpath(root, IMPORT_DIR)
+
+            try:
+                with open(extracted_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                source = data.get('source', {})
+
+                # Build display title from source metadata
+                lesson_num = source.get('lesson', '')
+                title = source.get('title', '')
+                textbook = source.get('textbook', '')
+
+                # Create informative display name
+                if lesson_num and title:
+                    display = f"Lesson {lesson_num}: {title}"
+                elif title:
+                    display = title
+                elif lesson_num:
+                    display = f"Lesson {lesson_num}"
+                else:
+                    display = rel_path  # Fallback to relative path
+
+                lessons.append({
+                    'id': rel_path,  # Relative path (for API calls)
+                    'lesson': lesson_num,
+                    'title': title,
+                    'textbook': textbook,
+                    'display': display,
+                    'vocab_count': len(data.get('vocabulary', [])),
+                    'has_dialogues': bool(data.get('dialogues')),
+                    'has_grammar': bool(data.get('grammar_patterns')),
+                    'has_exercises': bool(data.get('exercises')),
+                    'extracted_date': source.get('extracted_date'),
+                    'extracted_by': source.get('extracted_by')
+                })
+            except (json.JSONDecodeError, IOError) as e:
+                # Include failed directories with error info
+                lessons.append({
+                    'id': rel_path,
+                    'display': f"{rel_path} (error loading)",
+                    'error': str(e),
+                    'vocab_count': 0
+                })
+
+    # Sort by textbook then lesson number
+    lessons.sort(key=lambda x: (x.get('textbook', ''), str(x.get('lesson', ''))))
+
+    return jsonify({'lessons': lessons})
+
+
+@app.route('/api/import/preview')
+def api_import_preview():
+    """Preview an extraction before importing."""
+    lesson_id = request.args.get('lesson', '')
+
+    if not lesson_id:
+        return jsonify({'error': 'lesson parameter required'}), 400
+
+    extracted_path = os.path.join(IMPORT_DIR, lesson_id, 'extracted.json')
+
+    if not os.path.exists(extracted_path):
+        return jsonify({'error': f'Extraction not found: {lesson_id}'}), 404
+
+    try:
+        with open(extracted_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'Invalid JSON: {e}'}), 400
+
+    # Validate against schema
+    schema = load_extraction_schema()
+    validation_errors = validate_extraction(data, schema)
+    if validation_errors:
+        return jsonify({'error': 'Validation failed', 'details': validation_errors}), 400
+
+    # Load existing vocabulary for duplicate detection
+    vocab = load_vocab()
+    existing_chars = {v.get('characters') for v in vocab}
+
+    # Process vocabulary items
+    items = []
+    for item in data.get('vocabulary', []):
+        chars = item.get('characters', '')
+
+        # Determine status
+        comparison = None
+        if chars in existing_chars:
+            status = 'duplicate'
+        else:
+            comparison = compare_with_dictionary(item, BY_CHARS)
+            if comparison['status'] == 'pinyin_differs':
+                status = 'conflict'
+            elif comparison['status'] == 'sandhi_variant':
+                status = 'sandhi'  # Recognised sandhi - auto-accept textbook version
+            elif comparison['status'] == 'not_in_dict':
+                status = 'new_not_in_dict'
+            else:
+                status = 'new'
+
+        processed = {
+            'english': item.get('english', ''),
+            'pinyin': item.get('pinyin', ''),
+            'characters': chars,
+            'category': item.get('category'),
+            'status': status
+        }
+
+        # Add reference info for conflicts and sandhi variants
+        if status == 'conflict':
+            processed['pypinyin'] = comparison.get('pypinyin')  # More reliable reference
+            processed['dict_pinyin'] = comparison.get('dict_pinyin')
+            processed['dict_english'] = comparison.get('dict_english')
+        elif status == 'sandhi':
+            processed['pypinyin'] = comparison.get('pypinyin')
+            processed['dict_pinyin'] = comparison.get('dict_pinyin')
+            processed['note'] = 'Tone sandhi (textbook uses spoken form)'
+
+        items.append(processed)
+
+    return jsonify({
+        'source': data.get('source', {}),
+        'items': items,
+        'summary': {
+            'total': len(items),
+            'new': sum(1 for i in items if i['status'] == 'new'),
+            'sandhi': sum(1 for i in items if i['status'] == 'sandhi'),
+            'new_not_in_dict': sum(1 for i in items if i['status'] == 'new_not_in_dict'),
+            'conflict': sum(1 for i in items if i['status'] == 'conflict'),
+            'duplicate': sum(1 for i in items if i['status'] == 'duplicate')
+        },
+        'dialogues': data.get('dialogues', []),
+        'grammar_patterns': data.get('grammar_patterns', [])
+    })
+
+
+@app.route('/api/import/confirm', methods=['POST'])
+def api_import_confirm():
+    """Import selected vocabulary items."""
+    data = request.json
+
+    if not data or 'items' not in data:
+        return jsonify({'error': 'items array required'}), 400
+
+    vocab = load_vocab()
+    existing_chars = {v.get('characters') for v in vocab}
+
+    imported = []
+    skipped = []
+
+    for item in data['items']:
+        chars = item.get('characters', '')
+
+        # Skip if already exists
+        if chars in existing_chars:
+            skipped.append({'characters': chars, 'reason': 'duplicate'})
+            continue
+
+        # Use expected pinyin (pypinyin preferred, dict as fallback) if requested
+        use_expected = item.get('use_dictionary', False)
+        if use_expected:
+            # Prefer pypinyin (more reliable), fall back to dict_pinyin
+            pinyin = item.get('pypinyin') or item.get('dict_pinyin') or item.get('pinyin', '')
+        else:
+            pinyin = item.get('pinyin', '')
+
+        # Convert tone numbers to marks if needed (e.g., ni3 -> nǐ)
+        if pinyin and re.search(r'[1-4]', pinyin):
+            pinyin = numbered_to_toned(pinyin)
+
+        # Generate audio
+        audio_path = None
+        if chars:
+            try:
+                audio_path = generate_audio(chars, len(vocab))
+            except Exception as e:
+                print(f"Audio generation failed for {chars}: {e}")
+
+        # Create entry
+        entry = {
+            'english': item.get('english', ''),
+            'characters': chars,
+            'pinyin': pinyin,
+            'audio': audio_path,
+            'stats': {'correct': 0, 'wrong': 0}
+        }
+
+        vocab.append(entry)
+        existing_chars.add(chars)
+        imported.append(entry)
+
+    # Save vocabulary
+    if imported:
+        save_vocab(vocab)
+
+    return jsonify({
+        'success': True,
+        'imported': len(imported),
+        'skipped': len(skipped),
+        'skipped_items': skipped,
+        'total_vocab': len(vocab)
+    })
 
 
 if __name__ == '__main__':

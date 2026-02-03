@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wu-laoshi-extraction-v1",
+  "title": "Wu Laoshi Lesson Extraction Schema",
+  "description": "Schema for extracted lesson content from textbook images/PDFs. Used for vocabulary import and interactive lesson generation.",
+  "type": "object",
+  "required": ["source", "vocabulary"],
+  "properties": {
+    "source": {
+      "type": "object",
+      "description": "Metadata about the extraction source",
+      "required": ["lesson"],
+      "properties": {
+        "lesson": {"type": ["integer", "string"], "description": "Lesson number or identifier (can be number or string like '3A')"},
+        "title": {"type": "string", "description": "Lesson title in English (e.g., 'Cats & Dogs', 'Who is in your family?')"},
+        "title_chinese": {"type": "string", "description": "Lesson title in Chinese characters (optional)"},
+        "title_pinyin": {"type": "string", "description": "Lesson title in pinyin (optional)"},
+        "textbook": {"type": "string", "description": "Textbook/course name for grouping (e.g., 'HSK Standard Course 1', 'Integrated Chinese Level 1')"},
+        "extracted_by": {
+          "type": "string",
+          "enum": ["claude-conversation", "claude-api", "manual", "ocr"],
+          "description": "How the extraction was performed"
+        },
+        "extracted_date": {"type": "string", "format": "date"},
+        "image_files": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Source image filenames"
+        }
+      }
+    },
+    "vocabulary": {
+      "type": "array",
+      "description": "Core vocabulary items for import",
+      "items": {
+        "type": "object",
+        "required": ["english", "characters"],
+        "properties": {
+          "english": {"type": "string", "description": "English meaning/translation"},
+          "pinyin": {"type": "string", "description": "Pinyin with tone marks (e.g., 'nǐ hǎo') or tone numbers (e.g., 'ni3 hao3')"},
+          "characters": {"type": "string", "description": "Chinese characters (simplified)"},
+          "traditional": {"type": "string", "description": "Traditional characters if different"},
+          "category": {
+            "type": "string",
+            "enum": ["noun", "verb", "adjective", "adverb", "pronoun", "particle", "number", "measure_word", "conjunction", "preposition", "phrase", "other"],
+            "description": "Part of speech / category"
+          },
+          "notes": {"type": ["string", "null"], "description": "Additional notes from textbook"}
+        }
+      }
+    },
+    "proper_nouns": {
+      "type": "array",
+      "description": "Names of people, places, etc. (not for vocabulary import, but for context)",
+      "items": {
+        "type": "object",
+        "required": ["english", "characters"],
+        "properties": {
+          "english": {"type": "string"},
+          "pinyin": {"type": "string"},
+          "characters": {"type": "string"}
+        }
+      }
+    },
+    "dialogues": {
+      "type": "array",
+      "description": "Conversations for interactive practice",
+      "items": {
+        "type": "object",
+        "required": ["id", "lines"],
+        "properties": {
+          "id": {"type": "string", "description": "Unique identifier for this dialogue"},
+          "title": {"type": "string"},
+          "speakers": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of speaker names"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["chinese"],
+              "properties": {
+                "speaker": {"type": "string"},
+                "chinese": {"type": "string", "description": "Chinese text"},
+                "pinyin": {"type": "string"},
+                "english": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "grammar_patterns": {
+      "type": "array",
+      "description": "Grammar structures introduced in this lesson",
+      "items": {
+        "type": "object",
+        "required": ["pattern"],
+        "properties": {
+          "pattern": {"type": "string", "description": "The grammar pattern (e.g., '这是...')"},
+          "explanation": {"type": "string"},
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "chinese": {"type": "string"},
+                "pinyin": {"type": "string"},
+                "english": {"type": "string"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "exercises": {
+      "type": "array",
+      "description": "Practice exercises from the lesson",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["comprehension", "fill_blank", "translation", "matching", "multiple_choice", "other"]
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {"type": "string"},
+                "pinyin": {"type": "string"},
+                "answer": {"type": "string"},
+                "options": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

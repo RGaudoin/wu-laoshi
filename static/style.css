@@ -1,0 +1,642 @@
+/* Wu Laoshi - Mandarin Vocabulary Tool Styles */
+
+* { box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f5f5f5;
+}
+h1 { color: #333; text-align: center; margin-bottom: 10px; }
+
+/* Main navigation */
+.main-nav {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 10px;
+}
+.nav-btn {
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #666;
+    border-radius: 5px 5px 0 0;
+}
+.nav-btn:hover { background: #eee; }
+.nav-btn.active { background: #333; color: white; font-weight: bold; }
+.nav-btn.settings-btn { margin-left: auto; }
+
+/* Sections */
+.section {
+    display: none;
+}
+.section.active { display: block; }
+
+/* Sub-tabs (within sections) */
+.tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 20px;
+}
+.tab {
+    padding: 10px 20px;
+    background: #e0e0e0;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px 5px 0 0;
+    font-size: 16px;
+    color: #555;
+}
+.tab:hover { background: #d0d0d0; }
+.tab.active { background: white; font-weight: bold; color: #333; }
+.tab-content {
+    display: none;
+    background: white;
+    padding: 20px;
+    border-radius: 0 5px 5px 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.tab-content.active { display: block; }
+
+/* Home section cards */
+.home-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+.home-card {
+    background: white;
+    padding: 30px 20px;
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.home-card:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+.home-card h3 { margin: 0 0 10px 0; color: #333; }
+.home-card p { margin: 0; color: #666; font-size: 14px; }
+
+/* Settings modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+}
+.modal-overlay.active { display: flex; justify-content: center; align-items: center; }
+.modal {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    max-width: 700px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.modal h2 { margin-top: 0; }
+.modal-close { float: right; background: none; font-size: 24px; padding: 0 10px; }
+
+/* Collapsible sections */
+.collapsible {
+    background: #e0e0e0;
+    color: #333;
+    border: none;
+    padding: 12px 15px;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+    border-radius: 5px;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.collapsible:hover { background: #d0d0d0; }
+.collapsible::after { content: '▼'; font-size: 12px; transition: transform 0.2s; color: #555; }
+.collapsible.collapsed::after { transform: rotate(-90deg); }
+.collapsible-content {
+    padding: 15px;
+    background: white;
+    border: 1px solid #ddd;
+    border-top: none;
+    border-radius: 0 0 5px 5px;
+    margin-bottom: 15px;
+    margin-top: -5px;
+}
+.collapsible-content.collapsed { display: none; }
+
+/* Chinese text */
+.chinese {
+    font-family: "Noto Sans CJK SC", "Microsoft YaHei", "SimHei", sans-serif;
+    font-size: 24px;
+}
+.pinyin {
+    font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    font-size: 18px;
+    color: #666;
+}
+
+/* Forms */
+input[type="text"] {
+    padding: 10px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    width: 300px;
+}
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+button:hover { background: #45a049; }
+button.secondary { background: #2196F3; }
+button.danger { background: #f44336; }
+
+/* Lists */
+.vocab-item {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.vocab-item:hover { background: #f9f9f9; }
+.vocab-english { width: 150px; font-weight: bold; }
+.vocab-chars { font-size: 28px; }
+.vocab-pinyin { color: #666; }
+
+/* Dictionary matches */
+.match-item {
+    padding: 10px;
+    border: 1px solid #ddd;
+    margin: 5px 0;
+    border-radius: 5px;
+    cursor: pointer;
+}
+.match-item:hover { background: #e3f2fd; border-color: #2196F3; }
+.match-item.selected { background: #bbdefb; border-color: #1976D2; }
+
+/* Quiz */
+.quiz-prompt {
+    font-size: 48px;
+    text-align: center;
+    padding: 40px;
+    margin: 20px 0;
+}
+.quiz-input {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+.quiz-feedback {
+    text-align: center;
+    font-size: 24px;
+    padding: 20px;
+}
+.correct { color: #4CAF50; }
+.wrong { color: #f44336; }
+.score { text-align: center; font-size: 18px; color: #666; }
+
+/* Audio button */
+.audio-btn {
+    background: #9C27B0;
+    padding: 5px 10px;
+    font-size: 14px;
+}
+
+/* Settings */
+.settings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+select {
+    padding: 8px;
+    font-size: 16px;
+    border-radius: 5px;
+}
+
+/* Pinyin Chart */
+.pinyin-chart {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 8px;
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.pinyin-cell {
+    background: #f5f5f5;
+    border-radius: 8px;
+    padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.pinyin-cell:hover {
+    background: #e3f2fd;
+    transform: scale(1.05);
+}
+.pinyin-cell.expanded {
+    background: #bbdefb;
+    grid-column: span 2;
+}
+.pinyin-syllable {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+}
+.pinyin-tones {
+    display: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 8px;
+}
+.pinyin-cell.expanded .pinyin-tones {
+    display: flex;
+}
+.tone-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    font-size: 14px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #2196F3;
+    color: #2196F3;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.tone-btn:hover {
+    background: #2196F3;
+    color: white;
+}
+.tone-btn.playing {
+    background: #4CAF50;
+    border-color: #4CAF50;
+    color: white;
+}
+.pinyin-initial-header {
+    grid-column: 1 / -1;
+    background: #333;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 5px;
+    font-weight: bold;
+    margin-top: 10px;
+}
+.pinyin-initial-header:first-child {
+    margin-top: 0;
+}
+
+/* Tones sub-tabs */
+.sub-tabs {
+    margin-bottom: 15px;
+}
+.sub-tabs .tab {
+    padding: 8px 16px;
+    font-size: 14px;
+}
+.tones-subtab {
+    display: none;
+}
+.tones-subtab.active {
+    display: block;
+}
+
+/* Tone Practice */
+.tone-practice-settings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    margin-bottom: 20px;
+    align-items: center;
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 8px;
+}
+.tone-practice-settings label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+.tone-practice-settings select {
+    padding: 6px 10px;
+    font-size: 14px;
+}
+
+.tone-practice-area {
+    text-align: center;
+    padding: 30px 20px;
+    background: #fafafa;
+    border-radius: 10px;
+}
+
+.tone-practice-hint {
+    font-size: 48px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 20px;
+    font-family: "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+}
+.tone-practice-hint .tone-number {
+    color: #2196F3;
+}
+.tone-practice-hint .initial-hint {
+    color: #9C27B0;
+}
+.tone-practice-hint .final-hint {
+    color: #FF9800;
+}
+
+.tone-practice-play {
+    margin: 20px 0;
+}
+.tone-play-btn {
+    font-size: 24px;
+    padding: 15px 40px;
+}
+.tone-practice-play.audio-fallback .tone-play-btn {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.tone-practice-question {
+    font-size: 18px;
+    color: #666;
+    margin: 20px 0;
+}
+
+.tone-practice-options {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+.tone-option-btn {
+    min-width: 80px;
+    height: 60px;
+    font-size: 24px;
+    border-radius: 10px;
+    background: #fff;
+    border: 2px solid #ddd;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.tone-option-btn:hover {
+    border-color: #2196F3;
+    background: #e3f2fd;
+}
+.tone-option-btn.selected {
+    border-color: #2196F3;
+    background: #bbdefb;
+}
+.tone-option-btn.correct {
+    border-color: #4CAF50;
+    background: #c8e6c9;
+    color: #2e7d32;
+}
+.tone-option-btn.wrong {
+    border-color: #f44336;
+    background: #ffcdd2;
+    color: #c62828;
+}
+.tone-option-btn .tone-num {
+    font-size: 28px;
+    font-weight: bold;
+}
+.tone-option-btn .tone-mark {
+    font-size: 14px;
+    color: #666;
+}
+
+/* For syllable/initial options */
+.tone-option-btn.syllable-btn {
+    min-width: 100px;
+    font-size: 20px;
+}
+
+/* Text input for full recognition mode */
+.tone-practice-input {
+    margin: 20px 0;
+}
+.tone-practice-input input {
+    font-size: 24px;
+    padding: 12px 20px;
+    width: 200px;
+    text-align: center;
+}
+
+.tone-practice-feedback {
+    font-size: 20px;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 8px;
+    min-height: 50px;
+}
+.tone-practice-feedback.correct {
+    background: #c8e6c9;
+    color: #2e7d32;
+}
+.tone-practice-feedback.wrong {
+    background: #ffcdd2;
+    color: #c62828;
+}
+
+.tone-practice-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.tone-practice-complete {
+    text-align: center;
+    padding: 40px 20px;
+    background: #fafafa;
+    border-radius: 10px;
+}
+.tone-practice-complete h3 {
+    margin-bottom: 20px;
+    color: #333;
+}
+#tone-practice-summary {
+    font-size: 18px;
+    color: #666;
+    margin-bottom: 20px;
+}
+#tone-practice-summary .stat-correct {
+    color: #4CAF50;
+    font-weight: bold;
+}
+#tone-practice-summary .stat-wrong {
+    color: #f44336;
+    font-weight: bold;
+}
+
+/* Reference modal for comparing tones */
+.tone-reference {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 15px;
+    padding: 15px;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+}
+.tone-reference-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    font-size: 18px;
+    background: #f5f5f5;
+    border: 2px solid #ddd;
+    cursor: pointer;
+}
+.tone-reference-btn:hover {
+    background: #e3f2fd;
+    border-color: #2196F3;
+}
+.tone-reference-btn.highlight {
+    background: #fff3e0;
+    border-color: #FF9800;
+}
+
+/* Curation status indicators */
+.curation-status { font-size: 14px; }
+.curation-ok { color: #4CAF50; }
+.curation-flagged { color: #FF9800; }
+.curation-espeak { color: #999; border: 1px dashed #999; border-radius: 50%; padding: 0 3px; font-size: 12px; }
+
+/* Curation grouped layout */
+.curation-syllable {
+    border-bottom: 1px solid #ddd;
+    padding: 8px 10px;
+}
+.curation-syllable-header {
+    font-size: 15px;
+    margin-bottom: 6px;
+}
+.curation-tones-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.curation-tone-cell {
+    padding: 6px;
+    background: #f9f9f9;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 13px;
+}
+.curation-tone-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.curation-tone-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    justify-content: center;
+    margin-top: 4px;
+}
+.curation-action-btn {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: #e0e0e0;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.curation-action-btn:hover { background: #d0d0d0; }
+.curation-espeak-btn { background: #fff3e0; color: #e65100; }
+.curation-espeak-btn:hover { background: #ffe0b2; }
+
+.curation-alts-panel {
+    margin-top: 6px;
+    padding: 6px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    text-align: left;
+}
+.curation-alt-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 12px;
+}
+
+/* Tone practice curate panel */
+.tone-curate-panel {
+    margin-top: 15px;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    text-align: left;
+}
+.curate-panel-header {
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #333;
+}
+.curate-panel-tones {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.curate-tone-current {
+    background: #fff8e1 !important;
+    border: 1px solid #FFD54F;
+}
+
+/* Import */
+.import-item:hover {
+    background: #f9f9f9;
+}
+.import-item .import-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+.import-item .use-dict-checkbox {
+    cursor: pointer;
+}
