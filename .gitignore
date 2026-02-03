@@ -5,7 +5,13 @@ __pycache__/
 .eggs/
 
 # Data (user-specific vocabulary and generated files)
-data/
+data/vocabulary.json
+data/config.json
+data/pinyin_stats.json
+data/pinyin_tones_reviewed.json
+data/cedict.txt
+data/backup/
+data/import/
 audio/
 
 # IDE
@@ -15,6 +21,3 @@ audio/
 
 # OS
 .DS_Store
-
-# Temporary session context
-SESSION_CONTEXT.md

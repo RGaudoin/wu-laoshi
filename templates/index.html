@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandarin Vocabulary</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<h1>Mandarin Vocabulary</h1>
+
+    <!-- Main Navigation -->
+    <nav class="main-nav">
+        <button class="nav-btn active" onclick="showSection('home')">Home</button>
+        <button class="nav-btn" onclick="showSection('learn')">Learn</button>
+        <button class="nav-btn" onclick="showSection('vocabulary')">Vocabulary</button>
+        <button class="nav-btn" onclick="showSection('import')">Import</button>
+        <button class="nav-btn settings-btn" onclick="openSettings()">⚙️</button>
+    </nav>
+
+    <!-- HOME SECTION -->
+    <div id="section-home" class="section active">
+        <div class="home-cards">
+            <div class="home-card" onclick="showSection('learn')">
+                <h3>📝 Learn</h3>
+                <p>Quiz yourself on vocabulary</p>
+            </div>
+            <div class="home-card" onclick="showSection('vocabulary')">
+                <h3>📚 Vocabulary</h3>
+                <p id="home-vocab-count">Lookup, add, and manage words</p>
+            </div>
+            <div class="home-card" onclick="showSection('import')">
+                <h3>📄 Import</h3>
+                <p>Import from course materials</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEARN SECTION -->
+    <div id="section-learn" class="section">
+        <div class="tabs">
+            <button class="tab active" onclick="showSubTab('learn', 'quiz')">Quiz</button>
+            <button class="tab" onclick="showSubTab('learn', 'tones')">Tones</button>
+            <!-- Future: Conversation tab -->
+        </div>
+
+        <!-- QUIZ TAB -->
+        <div id="learn-quiz" class="tab-content active">
+            <div id="quiz-stats-summary" style="background: #f0f0f0; padding: 10px 15px; border-radius: 5px; margin-bottom: 15px; color: #666; font-size: 14px;"></div>
+            <div class="settings">
+                <label>Show:
+                    <select id="quiz-show">
+                        <option value="english">English</option>
+                        <option value="characters">Characters</option>
+                        <option value="pinyin">Pinyin</option>
+                        <option value="audio">Audio Only</option>
+                    </select>
+                </label>
+                <label>Answer with:
+                    <select id="quiz-answer">
+                        <option value="characters">Characters</option>
+                        <option value="pinyin">Pinyin</option>
+                        <option value="english">English</option>
+                    </select>
+                </label>
+                <label>Order:
+                    <select id="quiz-order">
+                        <option value="random">Random</option>
+                        <option value="weighted">Weighted (more mistakes = more frequent)</option>
+                        <option value="inorder">In Order</option>
+                    </select>
+                </label>
+                <label>Count:
+                    <select id="quiz-count">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="50">50</option>
+                        <option value="0">All</option>
+                    </select>
+                </label>
+                <label><input type="checkbox" id="quiz-focus-only"> Focus only</label>
+                <label>Tag: <select id="quiz-tag-filter"><option value="">All</option></select></label>
+                <label><input type="checkbox" id="quiz-require-tones"> Require tones</label>
+                <button onclick="startQuiz()">Start Quiz</button>
+            </div>
+            <div class="quiz-prompt chinese" id="quiz-prompt">Press "Start Quiz" to begin</div>
+            <div id="quiz-audio-btn" style="text-align: center; margin: 10px 0;">
+                <button class="audio-btn" onclick="playQuizAudio()" style="display: none;" id="quiz-play-audio">🔊 Play Audio</button>
+            </div>
+            <div class="quiz-input" id="quiz-input-area">
+                <input type="text" id="quiz-input" class="chinese" placeholder="Your answer">
+                <button onclick="checkAnswer()">Check</button>
+            </div>
+            <div class="quiz-feedback" id="quiz-feedback"></div>
+            <div id="quiz-next-btn" style="text-align: center; display: none; margin: 15px 0;">
+                <button class="secondary" onclick="nextQuestion()">Next →</button>
+            </div>
+            <div class="score" id="quiz-score">Score: 0/0</div>
+        </div>
+
+        <!-- TONES TAB -->
+        <div id="learn-tones" class="tab-content">
+            <!-- Tones sub-tabs -->
+            <div class="tabs sub-tabs">
+                <button class="tab active" onclick="showTonesSubTab('resources')">Resources</button>
+                <button class="tab" onclick="showTonesSubTab('chart')">Chart (WIP)</button>
+                <button class="tab" onclick="showTonesSubTab('practice')">Practice (WIP)</button>
+            </div>
+
+            <!-- RESOURCES SUB-TAB -->
+            <div id="tones-resources" class="tones-subtab active">
+                <div style="padding: 20px 0;">
+                    <h3 style="margin-top: 0;">Pinyin Charts</h3>
+                    <p style="color: #666;">Interactive charts for learning Mandarin tones and pronunciation:</p>
+                    <ul style="list-style: none; padding: 0; margin: 20px 0;">
+                        <li style="margin-bottom: 15px;">
+                            <a href="https://www.digmandarin.com/chinese-pinyin-chart" target="_blank" rel="noopener" style="font-size: 16px;">
+                                📊 DigMandarin Pinyin Chart
+                            </a>
+                            <p style="color: #888; margin: 5px 0 0 24px; font-size: 14px;">Comprehensive chart with audio for all syllable+tone combinations</p>
+                        </li>
+                        <li style="margin-bottom: 15px;">
+                            <a href="https://yoyochinese.com/chinese-learning-tools/Mandarin-Chinese-pronunciation-lesson/pinyin-chart-table" target="_blank" rel="noopener" style="font-size: 16px;">
+                                📊 Yoyo Chinese Pinyin Chart
+                            </a>
+                            <p style="color: #888; margin: 5px 0 0 24px; font-size: 14px;">Clear layout with video pronunciation guides</p>
+                        </li>
+                    </ul>
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 25px 0;">
+                    <p style="color: #999; font-size: 13px;">The Chart and Practice tabs above are work-in-progress local alternatives.</p>
+                </div>
+            </div>
+
+            <!-- CHART SUB-TAB -->
+            <div id="tones-chart" class="tones-subtab">
+                <div style="margin-bottom: 15px;">
+                    <p style="color: #666; margin: 0;">Click any syllable to hear all 4 tones. The grid shows valid Mandarin pinyin combinations.</p>
+                </div>
+                <div class="pinyin-chart-controls" style="margin-bottom: 15px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                    <label>Initial group:
+                        <select id="tones-initial-filter" onchange="filterPinyinChart()">
+                            <option value="all">All</option>
+                            <option value="none">(none) - vowels only</option>
+                            <option value="labial">Labials (b p m f)</option>
+                            <option value="alveolar">Alveolars (d t n l)</option>
+                            <option value="velar">Velars (g k h)</option>
+                            <option value="palatal">Palatals (j q x)</option>
+                            <option value="retroflex">Retroflexes (zh ch sh r)</option>
+                            <option value="dental">Dentals (z c s)</option>
+                            <option value="semivowel">Semivowels (y w)</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="pinyin-chart" class="pinyin-chart"></div>
+            </div>
+
+            <!-- PRACTICE SUB-TAB -->
+            <div id="tones-practice" class="tones-subtab">
+                <div class="tone-practice-settings">
+                    <label>Mode:
+                        <select id="tone-practice-mode">
+                            <option value="tone_id">Identify Tone (syllable shown)</option>
+                            <option value="syllable_id">Identify Syllable (tone shown)</option>
+                            <option value="initial_id">Identify Initial (zh/sh/ch...)</option>
+                            <option value="full_id">Full Recognition</option>
+                        </select>
+                    </label>
+                    <label>Initial:
+                        <select id="tone-practice-initial">
+                            <option value="all">All</option>
+                            <option value="none">Vowels only</option>
+                            <option value="labial">Labials (b p m f)</option>
+                            <option value="alveolar">Alveolars (d t n l)</option>
+                            <option value="velar">Velars (g k h)</option>
+                            <option value="palatal">Palatals (j q x)</option>
+                            <option value="retroflex">Retroflexes (zh ch sh r)</option>
+                            <option value="dental">Dentals (z c s)</option>
+                        </select>
+                    </label>
+                    <label>Tones:
+                        <select id="tone-practice-tones">
+                            <option value="all">All (1-4)</option>
+                            <option value="1,2">1 & 2</option>
+                            <option value="2,3">2 & 3 (hardest)</option>
+                            <option value="3,4">3 & 4</option>
+                            <option value="1,4">1 & 4</option>
+                        </select>
+                    </label>
+                    <label>Count:
+                        <select id="tone-practice-count">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="0">Unlimited</option>
+                        </select>
+                    </label>
+                    <button onclick="startTonePractice()">Start</button>
+                </div>
+
+                <div id="tone-practice-area" class="tone-practice-area" style="display: none;">
+                    <div id="tone-practice-hint" class="tone-practice-hint"></div>
+                    <div class="tone-practice-play">
+                        <button class="audio-btn tone-play-btn" onclick="playTonePracticeAudio()">🔊 Play</button>
+                    </div>
+                    <div id="tone-practice-question" class="tone-practice-question">Which tone did you hear?</div>
+                    <div id="tone-practice-options" class="tone-practice-options"></div>
+                    <div id="tone-practice-feedback" class="tone-practice-feedback"></div>
+                    <div id="tone-practice-controls" class="tone-practice-controls" style="display: none;">
+                        <button class="secondary" onclick="playTonePracticeAudio()">🔊 Replay</button>
+                        <button class="secondary" onclick="showToneReference()">📖 Reference</button>
+                        <button class="secondary" onclick="showToneCurate()">🔧 Curate</button>
+                        <button onclick="nextTonePractice()">Next →</button>
+                    </div>
+                    <div id="tone-curate-panel" class="tone-curate-panel" style="display: none;"></div>
+                    <div id="tone-practice-score" class="score"></div>
+                </div>
+
+                <div id="tone-practice-complete" class="tone-practice-complete" style="display: none;">
+                    <h3>Practice Complete!</h3>
+                    <div id="tone-practice-summary"></div>
+                    <button onclick="startTonePractice()">Practice Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VOCABULARY SECTION -->
+    <div id="section-vocabulary" class="section">
+        <div class="tabs">
+            <button class="tab active" onclick="showSubTab('vocabulary', 'lookup')">Lookup</button>
+            <button class="tab" onclick="showSubTab('vocabulary', 'add')">Add</button>
+            <button class="tab" onclick="showSubTab('vocabulary', 'list')">List</button>
+        </div>
+
+        <!-- LOOKUP TAB -->
+        <div id="vocabulary-lookup" class="tab-content active">
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="search-input" placeholder="Search (English, 中文, or pinyin)">
+                <button onclick="doSearch()">Search</button>
+            </div>
+            <h3>Your Vocabulary</h3>
+            <div id="vocab-results"></div>
+            <h3>Dictionary</h3>
+            <div id="dict-count"></div>
+            <div id="dict-results"></div>
+        </div>
+
+        <!-- ADD TAB -->
+        <div id="vocabulary-add" class="tab-content">
+            <div style="margin-bottom: 15px;">
+                <label>English: </label>
+                <input type="text" id="add-english" placeholder="meaning">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label>Characters: </label>
+                <input type="text" id="add-chars" placeholder="中文" class="chinese">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label>OR Search: </label>
+                <input type="text" id="add-pinyin" placeholder="pinyin or English (e.g., ni3 hao3, you)">
+                <button class="secondary" onclick="searchPinyin()">Search Dictionary</button>
+            </div>
+            <div id="add-count"></div>
+            <div id="pinyin-matches"></div>
+            <button onclick="addWord()" style="margin-top: 20px;">Add to Vocabulary</button>
+            <div id="add-result" style="margin-top: 15px;"></div>
+        </div>
+
+        <!-- LIST TAB -->
+        <div id="vocabulary-list" class="tab-content">
+            <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                <label><input type="checkbox" id="show-stats" onchange="refreshList()"> Show quiz stats</label>
+                <label>Tag: <select id="list-tag-filter" onchange="refreshList()"><option value="">All</option></select></label>
+            </div>
+            <div id="list-count"></div>
+            <div id="vocab-list"></div>
+        </div>
+    </div>
+
+    <!-- IMPORT SECTION -->
+    <div id="section-import" class="section">
+        <div style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <h2>Import Course Materials</h2>
+            <p style="color: #666; margin-bottom: 20px;">Import vocabulary from extracted lesson files.</p>
+
+            <!-- Lesson selector -->
+            <div id="import-lesson-select" style="margin-bottom: 20px;">
+                <label style="font-weight: bold;">Available Lessons:</label>
+                <select id="import-lesson-dropdown" onchange="loadImportPreview()" style="margin-left: 10px; padding: 8px; font-size: 16px;">
+                    <option value="">-- Select a lesson --</option>
+                </select>
+                <button onclick="refreshImportLessons()" style="margin-left: 10px; padding: 8px 15px;">↻ Refresh</button>
+            </div>
+
+            <!-- Preview area -->
+            <div id="import-preview" style="display: none;">
+                <!-- Source info -->
+                <div id="import-source-info" style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                </div>
+
+                <!-- Summary -->
+                <div id="import-summary" style="margin-bottom: 15px; padding: 10px; background: #e3f2fd; border-radius: 5px;">
+                </div>
+
+                <!-- Items list -->
+                <div id="import-items-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <strong>Vocabulary Items</strong>
+                    <div>
+                        <button onclick="selectAllImport(true)" style="padding: 5px 10px; font-size: 14px;">Select All New</button>
+                        <button onclick="selectAllImport(false)" style="padding: 5px 10px; font-size: 14px;">Deselect All</button>
+                    </div>
+                </div>
+                <div id="import-items-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px;">
+                </div>
+
+                <!-- Import button -->
+                <div style="margin-top: 20px; text-align: center;">
+                    <button id="import-confirm-btn" onclick="confirmImport()" style="padding: 12px 30px; font-size: 18px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Import Selected (<span id="import-selected-count">0</span>)
+                    </button>
+                </div>
+            </div>
+
+            <!-- No lessons message -->
+            <div id="import-no-lessons" style="display: none; color: #666; padding: 20px; text-align: center;">
+                <p>No extracted lessons found.</p>
+                <p style="font-size: 14px;">Place extracted JSON files in <code>data/import/lesson_N/extracted.json</code></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal">
+            <button class="modal-close" onclick="closeSettings()">&times;</button>
+            <h2>Settings</h2>
+
+            <!-- API Section -->
+            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">API</button>
+            <div class="collapsible-content collapsed">
+                <label><strong>Claude API Key</strong></label>
+                <p style="color: #666; font-size: 14px; margin: 5px 0;">Required for Import and Practice features</p>
+                <input type="password" id="api-key" placeholder="sk-ant-..." style="width: 100%; margin-top: 5px;">
+            </div>
+
+            <!-- Quiz Section -->
+            <button class="collapsible" onclick="toggleCollapsible(this)">Quiz</button>
+            <div class="collapsible-content">
+                <p style="color: #666; font-size: 13px; margin: 0 0 10px 0;"><strong>Weighting formula:</strong> weight = 1 + wrong_w × log(1+wrong) − correct_w × log(1+correct)</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <label style="font-size: 14px;">Wrong weight: <input type="number" id="setting-wrong-weight" value="1.0" step="0.1" min="0" style="width: 60px;"></label>
+                    <label style="font-size: 14px;">Correct weight: <input type="number" id="setting-correct-weight" value="0.5" step="0.1" min="0" style="width: 60px;"></label>
+                    <label style="font-size: 14px;">Max count: <input type="number" id="setting-max-count" value="20" step="1" min="1" style="width: 60px;"></label>
+                    <label style="font-size: 14px;">Decay: <input type="number" id="setting-decay" value="1" step="1" min="0" style="width: 60px;"></label>
+                </div>
+                <p style="color: #999; font-size: 12px; margin-top: 10px;">Higher wrong weight = focus on mistakes. Decay = how much correct reduces wrong (and vice versa).</p>
+                <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
+                <p style="color: #666; font-size: 13px; margin: 0 0 5px 0;"><strong>Reset data:</strong></p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="danger" onclick="resetStats('stats')">Reset Quiz Stats</button>
+                    <button class="danger" onclick="resetStats('char_stats')">Reset Character Stats</button>
+                    <button class="danger" onclick="resetStats('both')">Reset All</button>
+                </div>
+            </div>
+
+            <!-- Audio Section -->
+            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">Audio</button>
+            <div class="collapsible-content collapsed">
+                <label style="font-size: 14px; display: block; margin-bottom: 10px;">
+                    Mode:
+                    <select id="audio-rebuild-mode" style="margin-left: 5px;">
+                        <option value="smart">Smart rebuild (renumber + missing)</option>
+                        <option value="renumber">Renumber only (no gTTS)</option>
+                        <option value="force">Force rebuild (regenerate all)</option>
+                    </select>
+                </label>
+                <p id="audio-mode-desc" style="color: #666; font-size: 13px; margin: 0 0 10px 0;">Reuse existing audio files where possible, generate only for entries without audio.</p>
+                <button class="secondary" onclick="rebuildAudio()">Rebuild Audio</button>
+            </div>
+
+            <!-- Tone Audio Section -->
+            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">Tone Audio</button>
+            <div class="collapsible-content collapsed">
+                <p style="color: #666; font-size: 13px; margin: 0 0 10px 0;">
+                    Pre-generate natural gTTS audio for all tone practice syllables.
+                    Uses representative characters from pinyin_tones.json.
+                </p>
+                <label style="font-size: 14px; display: flex; align-items: center; gap: 5px; margin-bottom: 10px;">
+                    <input type="checkbox" id="tone-audio-force"> Force regenerate all
+                </label>
+                <button class="secondary" onclick="generateToneAudio()">Generate Tone Audio</button>
+                <p id="tone-audio-status" style="color: #666; font-size: 13px; margin: 10px 0 0 0;"></p>
+            </div>
+
+            <!-- Tone Audio Curation Section -->
+            <button class="collapsible collapsed" onclick="toggleCollapsible(this)">Curate Tone Characters</button>
+            <div class="collapsible-content collapsed">
+                <p style="color: #666; font-size: 13px; margin: 0 0 10px 0;">
+                    Review flagged character mappings. Listen and accept or replace with better alternatives.
+                </p>
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                    <label style="font-size: 13px;">
+                        Filter:
+                        <select id="curation-filter" style="margin-left: 5px; font-size: 13px;">
+                            <option value="unreviewed">Unreviewed only</option>
+                            <option value="all_flagged">All flagged</option>
+                            <option value="accepted">Accepted only</option>
+                        </select>
+                    </label>
+                    <label style="font-size: 13px;">
+                        Flag:
+                        <select id="curation-flag-filter" style="margin-left: 5px; font-size: 13px;">
+                            <option value="any">Any</option>
+                            <option value="duplicate_char">Duplicate character</option>
+                            <option value="cedict_mismatch">CEDICT mismatch</option>
+                            <option value="polyphone">Polyphone</option>
+                        </select>
+                    </label>
+                    <button class="secondary" onclick="loadCurationItems()" style="font-size: 13px; padding: 4px 10px;">Analyse</button>
+                </div>
+                <p id="curation-summary" style="color: #666; font-size: 13px; margin: 0 0 10px 0;"></p>
+                <div id="curation-list" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px;"></div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="saveSettings()">Save</button>
+                <button class="secondary" onclick="closeSettings()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDIT ENTRY MODAL -->
+    <div id="edit-modal" class="modal-overlay">
+        <div class="modal">
+            <button class="modal-close" onclick="closeEditModal()">&times;</button>
+            <h2 id="edit-modal-title">Edit Entry</h2>
+            <input type="hidden" id="edit-index">
+            <div style="margin-bottom: 15px;">
+                <label><strong>Characters</strong></label>
+                <p id="edit-chars" class="chinese" style="font-size: 32px; margin: 5px 0;"></p>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label><strong>English</strong></label>
+                <input type="text" id="edit-english" style="width: 100%; margin-top: 5px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label><strong>Pinyin</strong></label>
+                <div style="display: flex; gap: 10px; margin-top: 5px;">
+                    <input type="text" id="edit-pinyin" style="flex: 1;">
+                    <button class="secondary" onclick="lookupEditPinyin()" style="white-space: nowrap;">Lookup</button>
+                </div>
+                <div id="edit-pinyin-options" style="margin-top: 8px;"></div>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label><strong>Tags</strong></label>
+                <input type="text" id="edit-tags" placeholder="comma-separated, e.g. lesson1, greetings" style="width: 100%; margin-top: 5px;">
+            </div>
+            <div style="margin-bottom: 15px;" id="edit-audio-container"></div>
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+            <div style="display: flex; gap: 10px; justify-content: space-between;">
+                <div>
+                    <button onclick="saveEditModal()">Save</button>
+                    <button class="secondary" onclick="closeEditModal()">Cancel</button>
+                </div>
+                <button class="danger" onclick="deleteFromModal()">Delete</button>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -102,6 +102,7 @@ def load_cedict():
 
     by_pinyin = {}  # pinyin (no tones) -> list of entries
     by_chars = {}   # characters -> entry
+    all_readings = {}  # characters -> set of pinyin readings
 
     with open(CEDICT_FILE, 'r', encoding='utf-8') as f:
         for line in f:
@@ -127,10 +128,21 @@ def load_cedict():
                 by_chars[simp] = entry
                 by_chars[trad] = entry
 
+                # Track all readings per character
+                for key in (simp, trad):
+                    if key not in all_readings:
+                        all_readings[key] = set()
+                    all_readings[key].add(pinyin_toned)
+
                 # Index by plain pinyin (no tones, no spaces)
                 if pinyin_plain not in by_pinyin:
                     by_pinyin[pinyin_plain] = []
                 by_pinyin[pinyin_plain].append(entry)
+
+    # Attach alternative readings to entries with multiple pronunciations
+    for chars, readings in all_readings.items():
+        if len(readings) > 1 and chars in by_chars:
+            by_chars[chars]['alt_pinyin'] = sorted(readings)
 
     return by_pinyin, by_chars
 
