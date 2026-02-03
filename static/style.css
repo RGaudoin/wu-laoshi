@@ -640,3 +640,303 @@ select {
 .import-item .use-dict-checkbox {
     cursor: pointer;
 }
+
+/* Conversation Practice */
+.conversation-setup {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.conversation-settings {
+    margin-bottom: 20px;
+}
+.conversation-settings .setting-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.conversation-settings label {
+    width: 100px;
+    font-weight: 500;
+    color: #555;
+}
+.conversation-settings select {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    max-width: 400px;
+}
+.validation-options {
+    display: none;
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+.validation-option {
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.validation-option:last-child {
+    margin-bottom: 0;
+}
+.validation-option label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #555;
+}
+.validation-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+.validation-option select {
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-left: 5px;
+}
+.dialogue-preview {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+.dialogue-preview.expanded {
+    max-height: 500px;
+}
+.dialogue-preview h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #666;
+}
+.dialogue-preview-line {
+    padding: 5px 0;
+    font-size: 14px;
+    border-bottom: 1px solid #eee;
+}
+.dialogue-preview-line:last-child {
+    border-bottom: none;
+}
+.dialogue-preview-expand {
+    text-align: center;
+    padding: 8px 0 !important;
+    color: #1976d2;
+    font-size: 13px;
+}
+.dialogue-preview-expand:hover {
+    background: #e3f2fd;
+}
+.dialogue-preview-speaker {
+    font-weight: 600;
+    color: #333;
+}
+.dialogue-preview-text {
+    color: #555;
+}
+#start-conversation-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.conversation-area {
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    overflow: hidden;
+}
+.conversation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+}
+.conversation-header span {
+    font-weight: 600;
+    color: #333;
+}
+.conversation-messages {
+    padding: 20px;
+    min-height: 200px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.conversation-message {
+    margin-bottom: 15px;
+    padding: 12px 15px;
+    border-radius: 10px;
+    max-width: 85%;
+}
+.conversation-message.partner {
+    background: #e3f2fd;
+    margin-right: auto;
+}
+.conversation-message.user {
+    background: #e8f5e9;
+    margin-left: auto;
+}
+.conversation-message.user.error {
+    background: #ffebee;
+}
+.conversation-message-speaker {
+    font-weight: 600;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 5px;
+}
+.conversation-message-chinese {
+    font-size: 20px;
+    margin-bottom: 5px;
+}
+.conversation-message-pinyin {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 3px;
+}
+.conversation-message-english {
+    font-size: 13px;
+    color: #888;
+    font-style: italic;
+}
+.conversation-message .audio-btn.small {
+    margin-top: 5px;
+    padding: 3px 8px;
+    font-size: 12px;
+    background: rgba(0,0,0,0.05);
+    border: 1px solid rgba(0,0,0,0.1);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.conversation-message .audio-btn.small:hover {
+    background: rgba(0,0,0,0.1);
+}
+
+.conversation-input-section {
+    padding: 15px 20px;
+    border-top: 1px solid #eee;
+    background: #fafafa;
+}
+.conversation-prompt {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 10px;
+}
+.conversation-prompt span {
+    font-weight: 600;
+    color: #333;
+}
+.conversation-input-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.conversation-input-row input {
+    flex: 1;
+    padding: 10px 15px;
+    font-size: 18px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+.conversation-input-row button {
+    padding: 10px 25px;
+}
+.conversation-actions {
+    display: flex;
+    gap: 8px;
+}
+.conversation-actions button.small {
+    padding: 5px 12px;
+    font-size: 13px;
+}
+
+.conversation-feedback {
+    margin: 15px 20px;
+    padding: 15px;
+    border-radius: 8px;
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+}
+.conversation-feedback.correct {
+    background: #e8f5e9;
+    border-color: #a5d6a7;
+}
+.conversation-feedback.incorrect {
+    background: #ffebee;
+    border-color: #ef9a9a;
+}
+.conversation-feedback-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.conversation-feedback-text {
+    font-size: 14px;
+    color: #555;
+}
+.conversation-feedback-expected {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0,0,0,0.1);
+    font-size: 13px;
+    color: #666;
+}
+.conversation-feedback-actions {
+    margin-top: 12px;
+    text-align: right;
+}
+.conversation-feedback-actions button {
+    padding: 8px 20px;
+}
+
+.conversation-message.correction {
+    background: #fff8e1;
+    border: 1px dashed #ffc107;
+}
+.conversation-message-label {
+    font-size: 11px;
+    color: #f57c00;
+    font-weight: 600;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+.conversation-complete {
+    text-align: center;
+    padding: 30px 20px;
+}
+.conversation-complete h3 {
+    color: #2e7d32;
+    margin-bottom: 15px;
+}
+.conversation-complete button {
+    margin: 5px;
+}
+
+.conversation-no-api-key {
+    text-align: center;
+    padding: 40px 20px;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.conversation-no-api-key h3 {
+    color: #f57c00;
+    margin-bottom: 15px;
+}
+.conversation-no-api-key p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+button.secondary.small {
+    padding: 6px 12px;
+    font-size: 13px;
+}
