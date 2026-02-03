@@ -339,8 +339,13 @@
             <button class="collapsible collapsed" onclick="toggleCollapsible(this)">API</button>
             <div class="collapsible-content collapsed">
                 <label><strong>Claude API Key</strong></label>
-                <p style="color: #666; font-size: 14px; margin: 5px 0;">Required for Import and Practice features</p>
+                <p style="color: #666; font-size: 14px; margin: 5px 0;">Required for interactive Practice features</p>
                 <input type="password" id="api-key" placeholder="sk-ant-..." style="width: 100%; margin-top: 5px;">
+                <div style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button class="secondary" onclick="testApiKey()">Test Key</button>
+                    <button class="secondary" onclick="clearApiKey()">Clear Saved Key</button>
+                </div>
+                <p id="api-key-status" style="font-size: 13px; margin-top: 8px;"></p>
             </div>
 
             <!-- Quiz Section -->

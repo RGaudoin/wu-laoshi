@@ -198,15 +198,19 @@ let quizEntries = [];
                     document.getElementById('setting-max-count').value = quizSettings.maxCount;
                     document.getElementById('setting-decay').value = quizSettings.decay;
 
-                    // API key status (from env var)
+                    // API key status
                     const apiKeyInput = document.getElementById('api-key');
+                    apiKeyInput.disabled = false;
                     if (config.hasApiKey) {
-                        apiKeyInput.placeholder = '(set via CLAUDE_API_KEY env var)';
-                        apiKeyInput.disabled = true;
+                        if (config.apiKeySource === 'config') {
+                            apiKeyInput.placeholder = '••••••••••••••••••••• (saved in config)';
+                        } else {
+                            apiKeyInput.placeholder = '(set via CLAUDE_API_KEY env var)';
+                        }
                     } else {
-                        apiKeyInput.placeholder = 'Set CLAUDE_API_KEY environment variable';
-                        apiKeyInput.disabled = true;
+                        apiKeyInput.placeholder = 'sk-ant-...';
                     }
+                    apiKeyInput.value = ''; // Never show the actual key
                 })
                 .catch(err => console.error('Failed to load settings:', err));
         }
@@ -240,10 +244,18 @@ let quizEntries = [];
                 decay: parseInt(document.getElementById('setting-decay').value) || 1
             };
 
+            const payload = {quiz: quizSettings};
+
+            // Only send API key if user entered something new
+            const apiKeyInput = document.getElementById('api-key');
+            if (apiKeyInput.value.trim()) {
+                payload.claude_api_key = apiKeyInput.value.trim();
+            }
+
             fetch('/api/config', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({quiz: quizSettings})
+                body: JSON.stringify(payload)
             })
             .then(r => r.json())
             .then(data => {
@@ -252,6 +264,72 @@ let quizEntries = [];
                 }
             })
             .catch(err => console.error('Failed to save settings:', err));
+        }
+
+        function testApiKey() {
+            const statusEl = document.getElementById('api-key-status');
+            const apiKeyInput = document.getElementById('api-key');
+
+            // If user entered a new key, save it first
+            if (apiKeyInput.value.trim()) {
+                statusEl.textContent = 'Saving and testing...';
+                statusEl.style.color = '#666';
+
+                fetch('/api/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({claude_api_key: apiKeyInput.value.trim()})
+                })
+                .then(() => doTestApiKey())
+                .catch(err => {
+                    statusEl.textContent = 'Error saving key: ' + err.message;
+                    statusEl.style.color = '#c00';
+                });
+            } else {
+                doTestApiKey();
+            }
+        }
+
+        function doTestApiKey() {
+            const statusEl = document.getElementById('api-key-status');
+            statusEl.textContent = 'Testing API key...';
+            statusEl.style.color = '#666';
+
+            fetch('/api/config/test_api_key', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        statusEl.textContent = '✓ ' + data.message;
+                        statusEl.style.color = '#4CAF50';
+                        loadSettings(); // Refresh status
+                    } else {
+                        statusEl.textContent = '✗ ' + data.error;
+                        statusEl.style.color = '#c00';
+                    }
+                })
+                .catch(err => {
+                    statusEl.textContent = 'Error: ' + err.message;
+                    statusEl.style.color = '#c00';
+                });
+        }
+
+        function clearApiKey() {
+            if (!confirm('Clear the saved API key? (Environment variable will still work if set)')) return;
+
+            const statusEl = document.getElementById('api-key-status');
+            fetch('/api/config/clear_api_key', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        statusEl.textContent = 'API key cleared from config';
+                        statusEl.style.color = '#666';
+                        loadSettings(); // Refresh status
+                    }
+                })
+                .catch(err => {
+                    statusEl.textContent = 'Error: ' + err.message;
+                    statusEl.style.color = '#c00';
+                });
         }
 
         // Load settings on page load

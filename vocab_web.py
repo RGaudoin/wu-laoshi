@@ -1373,12 +1373,25 @@ def api_tone_practice_reset():
 # CONFIG API
 # ============================================================================
 
+def get_api_key():
+    """Get Claude API key from config or environment variable."""
+    # Config takes precedence over env var
+    config = load_config()
+    if config.get('claude_api_key'):
+        return config['claude_api_key']
+    return os.environ.get('CLAUDE_API_KEY')
+
+
 @app.route('/api/config')
 def api_get_config():
     """Get configuration."""
     config = load_config()
-    # Add API key status (from env var, don't expose the actual key)
-    config['hasApiKey'] = bool(os.environ.get('CLAUDE_API_KEY'))
+    # Add API key status (don't expose the actual key, just whether it's set)
+    api_key = get_api_key()
+    config['hasApiKey'] = bool(api_key)
+    config['apiKeySource'] = 'config' if config.get('claude_api_key') else ('env' if api_key else None)
+    # Never send the actual key to the frontend
+    config.pop('claude_api_key', None)
     return jsonify(config)
 
 
@@ -1392,8 +1405,55 @@ def api_save_config():
     if 'quiz' in data:
         config['quiz'] = {**config.get('quiz', {}), **data['quiz']}
 
+    # Update API key if provided (empty string clears it)
+    if 'claude_api_key' in data:
+        key = data['claude_api_key'].strip()
+        if key:
+            config['claude_api_key'] = key
+        else:
+            config.pop('claude_api_key', None)
+
     save_config(config)
-    return jsonify({'success': True, 'config': config})
+
+    # Return config without the actual key
+    response_config = {k: v for k, v in config.items() if k != 'claude_api_key'}
+    response_config['hasApiKey'] = bool(get_api_key())
+    return jsonify({'success': True, 'config': response_config})
+
+
+@app.route('/api/config/clear_api_key', methods=['POST'])
+def api_clear_api_key():
+    """Clear the stored API key."""
+    config = load_config()
+    config.pop('claude_api_key', None)
+    save_config(config)
+    return jsonify({'success': True, 'hasApiKey': bool(os.environ.get('CLAUDE_API_KEY'))})
+
+
+@app.route('/api/config/test_api_key', methods=['POST'])
+def api_test_api_key():
+    """Test the Claude API key by making a simple API call."""
+    import anthropic
+
+    api_key = get_api_key()
+    if not api_key:
+        return jsonify({'success': False, 'error': 'No API key configured'})
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        # Make a minimal API call to test the key
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hi"}]
+        )
+        return jsonify({'success': True, 'message': 'API key is valid'})
+    except anthropic.AuthenticationError:
+        return jsonify({'success': False, 'error': 'Invalid API key'})
+    except anthropic.APIError as e:
+        return jsonify({'success': False, 'error': f'API error: {str(e)}'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'})
 
 
 # ============================================================================
