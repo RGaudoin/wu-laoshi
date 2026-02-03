@@ -160,6 +160,7 @@ let quizEntries = [];
 
             // Load data for specific tabs
             if (tabId === 'list') refreshList();
+            if (tabId === 'conversation') loadConversationLessons();
         }
 
         function openSettings() {
@@ -2364,9 +2365,9 @@ let quizEntries = [];
                         statusColor = '#f44336';
                         break;
                     case 'duplicate':
-                        statusBadge = 'DUPLICATE';
-                        statusColor = '#999';
-                        canSelect = false;
+                        statusBadge = 'EXISTS';
+                        statusColor = '#9e9e9e';
+                        // Allow selection but uncheck by default
                         break;
                 }
 
@@ -2374,14 +2375,28 @@ let quizEntries = [];
                 if (item.status === 'conflict') {
                     // Show pypinyin (reliable) as reference; dict_pinyin may have rare/alternate reading
                     const expectedPinyin = item.pypinyin || item.dict_pinyin;
+                    const radioName = `conflict-action-${i}`;
                     extraInfo = `
                         <div style="font-size: 12px; margin-top: 5px; padding: 8px; background: #fff3e0; border-radius: 4px;">
-                            <strong>Expected:</strong> ${expectedPinyin}
-                            <br>
-                            <label style="margin-top: 5px; display: block;">
-                                <input type="checkbox" class="use-dict-checkbox" data-index="${i}">
-                                Use expected pinyin instead
-                            </label>
+                            <div style="margin-bottom: 6px; color: #666;">Pinyin mismatch — choose which to use:</div>
+                            <div style="padding-left: 8px;">
+                                <label style="display: block; padding: 4px 0;">
+                                    <input type="radio" name="${radioName}" value="textbook" class="conflict-action-radio" data-index="${i}" checked>
+                                    Textbook: <strong>${item.pinyin}</strong>
+                                </label>
+                                <label style="display: block; padding: 4px 0;">
+                                    <input type="radio" name="${radioName}" value="dictionary" class="conflict-action-radio" data-index="${i}">
+                                    Dictionary: <strong>${expectedPinyin}</strong>
+                                </label>
+                                <label style="display: block; padding: 4px 0;">
+                                    <input type="radio" name="${radioName}" value="both" class="conflict-action-radio" data-index="${i}">
+                                    Add both as separate entries
+                                </label>
+                                <label style="display: block; padding: 4px 0; border-top: 1px solid #e0c080; margin-top: 4px;">
+                                    <input type="radio" name="${radioName}" value="skip" class="conflict-action-radio" data-index="${i}">
+                                    Skip (don't import)
+                                </label>
+                            </div>
                         </div>
                     `;
                 } else if (item.status === 'sandhi' && item.note) {
@@ -2390,11 +2405,52 @@ let quizEntries = [];
                             <em>${item.note}</em> — Citation form: ${item.dict_pinyin}
                         </div>
                     `;
+                } else if (item.status === 'duplicate' && item.existing) {
+                    // existing is now an array of all matching entries
+                    const existingList = Array.isArray(item.existing) ? item.existing : [item.existing];
+                    const radioName = `dup-action-${i}`;
+
+                    let existingHtml = existingList.map((ex, j) => {
+                        const isDiff = item.english !== ex.english || item.pinyin !== ex.pinyin;
+                        const diffClass = isDiff ? 'color: #c62828;' : '';
+                        return `
+                            <div style="display: flex; align-items: center; padding: 4px 0; ${j > 0 ? 'border-top: 1px solid #e0e0e0; margin-top: 4px;' : ''}">
+                                <label style="flex: 1; ${diffClass}">
+                                    <input type="radio" name="${radioName}" value="replace-${ex.index}" class="dup-action-radio" data-index="${i}" data-replace-index="${ex.index}">
+                                    Replace: ${ex.pinyin} — ${ex.english}
+                                </label>
+                            </div>
+                        `;
+                    }).join('');
+
+                    extraInfo = `
+                        <div style="font-size: 12px; margin-top: 5px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
+                            <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #ddd;">
+                                <strong>From textbook:</strong> ${item.pinyin} — ${item.english}
+                            </div>
+                            <div style="margin-bottom: 6px; color: #666;">In your vocabulary:</div>
+                            <div style="margin-bottom: 8px; padding-left: 8px;">
+                                <label style="display: block; padding: 4px 0;">
+                                    <input type="radio" name="${radioName}" value="skip" class="dup-action-radio" data-index="${i}" checked>
+                                    Keep existing (don't import)
+                                </label>
+                                ${existingHtml}
+                                <label style="display: block; padding: 4px 0; border-top: 1px solid #e0e0e0; margin-top: 4px;">
+                                    <input type="radio" name="${radioName}" value="add" class="dup-action-radio" data-index="${i}">
+                                    Add as new entry
+                                </label>
+                            </div>
+                        </div>
+                    `;
                 }
+
+                // For duplicates and conflicts, hide main checkbox since we use radio buttons
+                const showMainCheckbox = item.status !== 'duplicate' && item.status !== 'conflict';
+                const isCheckedByDefault = canSelect && item.status !== 'conflict' && item.status !== 'duplicate';
 
                 row.innerHTML = `
                     <div style="display: flex; align-items: flex-start; padding: 12px; border-bottom: 1px solid #eee; ${!canSelect ? 'opacity: 0.5;' : ''}">
-                        <input type="checkbox" class="import-checkbox" data-index="${i}" ${canSelect ? '' : 'disabled'} ${canSelect && item.status !== 'conflict' ? 'checked' : ''} onchange="updateImportCount()" style="margin-right: 12px; margin-top: 4px;">
+                        <input type="checkbox" class="import-checkbox" data-index="${i}" ${canSelect ? '' : 'disabled'} ${isCheckedByDefault ? 'checked' : ''} onchange="updateImportCount()" style="margin-right: 12px; margin-top: 4px; ${showMainCheckbox ? '' : 'visibility: hidden;'}">
                         <div style="flex: 1;">
                             <span class="chinese" style="font-size: 20px;">${item.characters}</span>
                             <span class="pinyin" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
@@ -2406,6 +2462,14 @@ let quizEntries = [];
                 `;
 
                 listEl.appendChild(row);
+            });
+
+            // Add event delegation for duplicate and conflict radio buttons
+            listEl.addEventListener('change', (e) => {
+                if (e.target.classList.contains('dup-action-radio') ||
+                    e.target.classList.contains('conflict-action-radio')) {
+                    updateImportCount();
+                }
             });
 
             updateImportCount();
@@ -2426,7 +2490,32 @@ let quizEntries = [];
         }
 
         function updateImportCount() {
-            const count = document.querySelectorAll('.import-checkbox:checked').length;
+            // Count checked non-duplicate items
+            let count = 0;
+            document.querySelectorAll('.import-checkbox:checked').forEach(cb => {
+                const idx = parseInt(cb.dataset.index);
+                const item = importPreviewData?.items?.[idx];
+                if (item && item.status !== 'duplicate' && item.status !== 'conflict') {
+                    count++;
+                }
+            });
+
+            // Count duplicate items with add/replace selected
+            document.querySelectorAll('.dup-action-radio:checked').forEach(radio => {
+                if (radio.value !== 'skip') {
+                    count++;
+                }
+            });
+
+            // Count conflict items with textbook/dictionary/both selected (not skip)
+            document.querySelectorAll('.conflict-action-radio:checked').forEach(radio => {
+                if (radio.value === 'both') {
+                    count += 2;  // Adding two entries
+                } else if (radio.value !== 'skip') {
+                    count++;
+                }
+            });
+
             document.getElementById('import-selected-count').textContent = count;
         }
 
@@ -2434,17 +2523,63 @@ let quizEntries = [];
             if (!importPreviewData) return;
 
             const selectedItems = [];
+
+            // Process regular items via checkboxes (not duplicates or conflicts)
             document.querySelectorAll('.import-checkbox:checked').forEach(cb => {
                 const idx = parseInt(cb.dataset.index);
                 const item = { ...importPreviewData.items[idx] };
 
-                // Check if user wants to use dictionary pinyin for conflicts
-                const useDictCb = document.querySelector(`.use-dict-checkbox[data-index="${idx}"]`);
-                if (useDictCb && useDictCb.checked) {
-                    item.use_dictionary = true;
-                }
+                // Skip duplicates and conflicts - they're handled via radio buttons
+                if (item.status === 'duplicate' || item.status === 'conflict') return;
 
+                item.action = 'add';
                 selectedItems.push(item);
+            });
+
+            // Process conflict items via radio buttons
+            importPreviewData.items.forEach((item, idx) => {
+                if (item.status !== 'conflict') return;
+
+                const selectedRadio = document.querySelector(`input[name="conflict-action-${idx}"]:checked`);
+                if (!selectedRadio) return;
+
+                const value = selectedRadio.value;
+                if (value === 'skip') return;
+
+                if (value === 'both') {
+                    // Add both versions as separate entries
+                    const textbookItem = { ...item, action: 'add' };
+                    const dictItem = { ...item, action: 'add', use_dictionary: true };
+                    selectedItems.push(textbookItem);
+                    selectedItems.push(dictItem);
+                } else {
+                    const importItem = { ...item };
+                    importItem.action = 'add';
+                    if (value === 'dictionary') {
+                        importItem.use_dictionary = true;
+                    }
+                    selectedItems.push(importItem);
+                }
+            });
+
+            // Process duplicate items via radio buttons
+            importPreviewData.items.forEach((item, idx) => {
+                if (item.status !== 'duplicate') return;
+
+                const selectedRadio = document.querySelector(`input[name="dup-action-${idx}"]:checked`);
+                if (!selectedRadio) return;
+
+                const value = selectedRadio.value;
+                if (value === 'skip') return;  // Don't include skipped items
+
+                const importItem = { ...item };
+                if (value === 'add') {
+                    importItem.action = 'add';
+                } else if (value.startsWith('replace-')) {
+                    importItem.action = 'replace';
+                    importItem.replace_index = parseInt(value.replace('replace-', ''));
+                }
+                selectedItems.push(importItem);
             });
 
             if (selectedItems.length === 0) {
@@ -2452,7 +2587,14 @@ let quizEntries = [];
                 return;
             }
 
-            if (!confirm(`Import ${selectedItems.length} vocabulary items?`)) {
+            const addCount = selectedItems.filter(i => i.action === 'add').length;
+            const replaceCount = selectedItems.filter(i => i.action === 'replace').length;
+            let confirmMsg = `Import ${selectedItems.length} vocabulary items?`;
+            if (replaceCount > 0) {
+                confirmMsg = `Add ${addCount} new items and replace ${replaceCount} existing items?`;
+            }
+
+            if (!confirm(confirmMsg)) {
                 return;
             }
 
@@ -2468,7 +2610,11 @@ let quizEntries = [];
                     return;
                 }
 
-                alert(`Successfully imported ${data.imported} items.\n${data.skipped} skipped (duplicates).`);
+                let resultMsg = [];
+                if (data.imported > 0) resultMsg.push(`${data.imported} added`);
+                if (data.replaced > 0) resultMsg.push(`${data.replaced} replaced`);
+                if (data.skipped > 0) resultMsg.push(`${data.skipped} skipped`);
+                alert(`Import complete: ${resultMsg.join(', ')}.`);
 
                 // Reload preview to update statuses
                 loadImportPreview();
@@ -2486,3 +2632,551 @@ let quizEntries = [];
                 importNav.addEventListener('click', refreshImportLessons);
             }
         });
+
+        // ==================== CONVERSATION PRACTICE ====================
+
+        let conversationState = {
+            lessonId: null,
+            dialogueId: null,
+            dialogue: null,
+            userRole: null,
+            currentLineIndex: 0,
+            inputMode: 'characters',
+            displayMode: 'all',
+            strictness: 'gentle',
+            score: { correct: 0, total: 0 },
+            previewExpanded: false
+        };
+
+        let conversationLessons = [];
+
+        function loadConversationLessons() {
+            fetch('/api/conversation/lessons')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading conversation lessons:', data.error);
+                        return;
+                    }
+                    conversationLessons = data.lessons || [];
+                    const select = document.getElementById('conversation-lesson');
+                    select.innerHTML = '<option value="">-- Select a lesson --</option>';
+                    conversationLessons.forEach(lesson => {
+                        const opt = document.createElement('option');
+                        opt.value = lesson.id;
+                        opt.textContent = `Lesson ${lesson.lesson}: ${lesson.title}`;
+                        select.appendChild(opt);
+                    });
+
+                    // Check API key
+                    checkConversationApiKey();
+                })
+                .catch(err => {
+                    console.error('Failed to load conversation lessons:', err);
+                });
+        }
+
+        function checkConversationApiKey() {
+            fetch('/api/config/test_api_key')
+                .then(r => r.json())
+                .then(data => {
+                    const setupEl = document.getElementById('conversation-setup');
+                    const noKeyEl = document.getElementById('conversation-no-api-key');
+                    if (data.valid) {
+                        setupEl.style.display = 'block';
+                        noKeyEl.style.display = 'none';
+                    } else {
+                        setupEl.style.display = 'none';
+                        noKeyEl.style.display = 'block';
+                    }
+                })
+                .catch(() => {
+                    // If check fails, show setup anyway
+                });
+        }
+
+        function loadDialogueOptions() {
+            const lessonId = document.getElementById('conversation-lesson').value;
+            const dialogueSelect = document.getElementById('conversation-dialogue');
+            const roleSelect = document.getElementById('conversation-role');
+            const previewEl = document.getElementById('conversation-dialogue-preview');
+            const startBtn = document.getElementById('start-conversation-btn');
+
+            dialogueSelect.innerHTML = '<option value="">-- Select dialogue --</option>';
+            roleSelect.innerHTML = '<option value="">-- Select dialogue first --</option>';
+            previewEl.style.display = 'none';
+            startBtn.disabled = true;
+
+            if (!lessonId) return;
+
+            const lesson = conversationLessons.find(l => l.id === lessonId);
+            if (!lesson || !lesson.dialogues) return;
+
+            lesson.dialogues.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.title || d.id;
+                dialogueSelect.appendChild(opt);
+            });
+
+            // Auto-select if only one dialogue
+            if (lesson.dialogues.length === 1) {
+                dialogueSelect.value = lesson.dialogues[0].id;
+                loadDialogueDetails();
+            }
+        }
+
+        function loadDialogueDetails() {
+            const lessonId = document.getElementById('conversation-lesson').value;
+            const dialogueId = document.getElementById('conversation-dialogue').value;
+            const roleSelect = document.getElementById('conversation-role');
+            const previewEl = document.getElementById('conversation-dialogue-preview');
+            const startBtn = document.getElementById('start-conversation-btn');
+
+            roleSelect.innerHTML = '<option value="">-- Select role --</option>';
+            previewEl.style.display = 'none';
+            startBtn.disabled = true;
+
+            if (!lessonId || !dialogueId) return;
+
+            fetch(`/api/conversation/dialogue?lesson=${encodeURIComponent(lessonId)}&dialogue=${encodeURIComponent(dialogueId)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error loading dialogue:', data.error);
+                        return;
+                    }
+
+                    conversationState.dialogue = data;
+
+                    // Populate role selector
+                    const speakers = data.speakers || [];
+                    speakers.forEach(speaker => {
+                        const opt = document.createElement('option');
+                        opt.value = speaker;
+                        opt.textContent = speaker;
+                        roleSelect.appendChild(opt);
+                    });
+
+                    // Show preview (will be updated based on input mode)
+                    updateConversationPreview();
+                    previewEl.style.display = 'block';
+
+                    // Auto-select first role
+                    if (speakers.length > 0) {
+                        roleSelect.value = speakers[0];
+                        updateStartButton();
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load dialogue:', err);
+                });
+        }
+
+        function updateStartButton() {
+            const lessonId = document.getElementById('conversation-lesson').value;
+            const dialogueId = document.getElementById('conversation-dialogue').value;
+            const role = document.getElementById('conversation-role').value;
+            const startBtn = document.getElementById('start-conversation-btn');
+
+            startBtn.disabled = !(lessonId && dialogueId && role);
+        }
+
+        function updateConversationPreview() {
+            const previewLines = document.getElementById('conversation-preview-lines');
+            const previewEl = document.getElementById('conversation-dialogue-preview');
+            if (!previewLines || !conversationState.dialogue) return;
+
+            // Toggle expanded class
+            if (conversationState.previewExpanded) {
+                previewEl.classList.add('expanded');
+            } else {
+                previewEl.classList.remove('expanded');
+            }
+
+            const displayMode = document.getElementById('conversation-display-mode').value;
+            const lines = conversationState.dialogue.lines || [];
+
+            // Determine what to show based on display mode (same logic as partner messages)
+            const showChinese = displayMode !== 'pinyin';
+            const showPinyin = displayMode === 'all' || displayMode === 'chinese_pinyin' || displayMode === 'pinyin';
+            const showEnglish = displayMode === 'all' || displayMode === 'chinese_english';
+
+            previewLines.innerHTML = '';
+            const showCount = conversationState.previewExpanded ? lines.length : 5;
+            lines.slice(0, showCount).forEach(line => {
+                const div = document.createElement('div');
+                div.className = 'dialogue-preview-line';
+
+                // Build text based on display mode
+                let parts = [];
+                if (showChinese && line.chinese) parts.push(line.chinese);
+                if (showPinyin && line.pinyin) parts.push(line.pinyin);
+                if (showEnglish && line.english) parts.push(`(${line.english})`);
+                const text = parts.join(' — ') || line.chinese;
+
+                // Add audio button if line has Chinese text
+                const audioBtn = line.chinese
+                    ? `<button class="audio-btn small" onclick="readConversationLine('${line.chinese.replace(/'/g, "\\'")}')">🔊</button>`
+                    : '';
+                div.innerHTML = `<span class="dialogue-preview-speaker">${line.speaker}:</span> <span class="dialogue-preview-text">${text}</span> ${audioBtn}`;
+                previewLines.appendChild(div);
+            });
+
+            if (lines.length > showCount) {
+                const div = document.createElement('div');
+                div.className = 'dialogue-preview-line dialogue-preview-expand';
+                div.style.color = '#666';
+                div.style.cursor = 'pointer';
+                if (conversationState.previewExpanded) {
+                    div.textContent = '▲ Show less';
+                    div.onclick = () => { conversationState.previewExpanded = false; updateConversationPreview(); };
+                } else {
+                    div.textContent = `▼ Show all ${lines.length} lines`;
+                    div.onclick = () => { conversationState.previewExpanded = true; updateConversationPreview(); };
+                }
+                previewLines.appendChild(div);
+            }
+        }
+
+        function stripToneMarks(pinyin) {
+            // Convert toned vowels to plain vowels
+            const toneMap = {
+                'ā': 'a', 'á': 'a', 'ǎ': 'a', 'à': 'a',
+                'ē': 'e', 'é': 'e', 'ě': 'e', 'è': 'e',
+                'ī': 'i', 'í': 'i', 'ǐ': 'i', 'ì': 'i',
+                'ō': 'o', 'ó': 'o', 'ǒ': 'o', 'ò': 'o',
+                'ū': 'u', 'ú': 'u', 'ǔ': 'u', 'ù': 'u',
+                'ǖ': 'ü', 'ǘ': 'ü', 'ǚ': 'ü', 'ǜ': 'ü'
+            };
+            return pinyin.split('').map(c => toneMap[c] || c).join('');
+        }
+
+        // Add change listener for role selector
+        document.addEventListener('DOMContentLoaded', () => {
+            const roleSelect = document.getElementById('conversation-role');
+            if (roleSelect) {
+                roleSelect.addEventListener('change', updateStartButton);
+            }
+
+            // Handle Enter key in conversation input
+            const convInput = document.getElementById('conversation-input');
+            if (convInput) {
+                convInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        submitConversationTurn();
+                    }
+                });
+            }
+        });
+
+        function startConversation() {
+            const lessonId = document.getElementById('conversation-lesson').value;
+            const dialogueId = document.getElementById('conversation-dialogue').value;
+            const userRole = document.getElementById('conversation-role').value;
+            const inputMode = document.getElementById('conversation-input-mode').value;
+            const displayMode = document.getElementById('conversation-display-mode').value;
+            const strictness = document.getElementById('conversation-strictness').value;
+
+            if (!lessonId || !dialogueId || !userRole) {
+                alert('Please select lesson, dialogue, and role.');
+                return;
+            }
+
+            conversationState.lessonId = lessonId;
+            conversationState.dialogueId = dialogueId;
+            conversationState.userRole = userRole;
+            conversationState.inputMode = inputMode;
+            conversationState.displayMode = displayMode;
+            conversationState.strictness = strictness;
+            conversationState.currentLineIndex = 0;
+            conversationState.score = { correct: 0, total: 0 };
+
+            // Hide setup, show conversation area
+            document.getElementById('conversation-setup').style.display = 'none';
+            document.getElementById('conversation-area').style.display = 'block';
+            document.getElementById('conversation-complete').style.display = 'none';
+            document.getElementById('conversation-input-section').style.display = 'block';
+            document.getElementById('conversation-feedback').style.display = 'none';
+
+            // Set title and role indicator
+            document.getElementById('conversation-title').textContent = conversationState.dialogue.title || 'Dialogue Practice';
+            document.getElementById('conversation-your-role').textContent = userRole;
+
+            // Clear messages
+            document.getElementById('conversation-messages').innerHTML = '';
+
+            // Start the conversation
+            advanceConversation();
+        }
+
+        function advanceConversation() {
+            const dialogue = conversationState.dialogue;
+            const lines = dialogue.lines || [];
+
+            // Display partner's lines until it's user's turn
+            while (conversationState.currentLineIndex < lines.length) {
+                const line = lines[conversationState.currentLineIndex];
+
+                if (line.speaker === conversationState.userRole) {
+                    // User's turn - show input
+                    document.getElementById('conversation-input-section').style.display = 'block';
+                    document.getElementById('conversation-input').value = '';
+                    document.getElementById('conversation-input').focus();
+                    document.getElementById('conversation-feedback').style.display = 'none';
+                    return;
+                } else {
+                    // Partner's line - display it
+                    displayConversationMessage(line, false);
+                    conversationState.currentLineIndex++;
+                }
+            }
+
+            // Dialogue complete
+            showConversationComplete();
+        }
+
+        function displayConversationMessage(line, isUser, isError = false, isCorrection = false) {
+            const messagesEl = document.getElementById('conversation-messages');
+            const div = document.createElement('div');
+            div.className = 'conversation-message ' + (isUser ? 'user' : 'partner');
+            if (isError) div.classList.add('error');
+            if (isCorrection) div.classList.add('correction');
+
+            // Get display mode (only applies to partner messages)
+            const displayMode = document.getElementById('conversation-display-mode')?.value || 'all';
+
+            let html = '';
+            if (isCorrection) {
+                html += `<div class="conversation-message-label">✓ Correct answer:</div>`;
+            }
+            html += `<div class="conversation-message-speaker">${line.speaker}</div>`;
+
+            // User messages always show all info; partner messages respect display mode
+            if (isUser && !isCorrection) {
+                html += `<div class="conversation-message-chinese">${line.chinese}</div>`;
+                if (line.pinyin) {
+                    html += `<div class="conversation-message-pinyin">${line.pinyin}</div>`;
+                }
+                if (line.english) {
+                    html += `<div class="conversation-message-english">${line.english}</div>`;
+                }
+            } else if (isCorrection) {
+                // Correction shows full info plus audio
+                html += `<div class="conversation-message-chinese">${line.chinese}</div>`;
+                if (line.pinyin) {
+                    html += `<div class="conversation-message-pinyin">${line.pinyin}</div>`;
+                }
+                if (line.english) {
+                    html += `<div class="conversation-message-english">${line.english}</div>`;
+                }
+                if (line.chinese) {
+                    html += `<button class="audio-btn small" onclick="readConversationLine('${line.chinese.replace(/'/g, "\\'")}')">🔊</button>`;
+                }
+            } else {
+                // Partner message - respect display mode
+                const showChinese = displayMode !== 'pinyin';
+                const showPinyin = displayMode === 'all' || displayMode === 'chinese_pinyin' || displayMode === 'pinyin';
+                const showEnglish = displayMode === 'all' || displayMode === 'chinese_english';
+
+                if (showChinese && line.chinese) {
+                    html += `<div class="conversation-message-chinese">${line.chinese}</div>`;
+                }
+                if (showPinyin && line.pinyin) {
+                    html += `<div class="conversation-message-pinyin">${line.pinyin}</div>`;
+                }
+                if (showEnglish && line.english) {
+                    html += `<div class="conversation-message-english">${line.english}</div>`;
+                }
+                // Add read button for partner messages
+                if (line.chinese) {
+                    html += `<button class="audio-btn small" onclick="readConversationLine('${line.chinese.replace(/'/g, "\\'")}')">🔊</button>`;
+                }
+            }
+
+            div.innerHTML = html;
+            messagesEl.appendChild(div);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        function readConversationLine(text) {
+            // Use the existing preview_audio endpoint to read the line
+            const audio = new Audio(`/api/preview_audio?text=${encodeURIComponent(text)}`);
+            audio.play().catch(err => console.error('Audio playback failed:', err));
+        }
+
+        function submitConversationTurn() {
+            const input = document.getElementById('conversation-input').value.trim();
+            if (!input) return;
+
+            const dialogue = conversationState.dialogue;
+            const lines = dialogue.lines || [];
+            const expectedLine = lines[conversationState.currentLineIndex];
+
+            // Show loading state
+            const submitBtn = document.querySelector('.conversation-input-row button');
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = '...';
+            submitBtn.disabled = true;
+
+            fetch('/api/conversation/turn', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    lesson_id: conversationState.lessonId,
+                    dialogue_id: conversationState.dialogueId,
+                    user_role: conversationState.userRole,
+                    line_index: conversationState.currentLineIndex,
+                    user_input: input,
+                    input_mode: conversationState.inputMode,
+                    strictness: conversationState.strictness
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+
+                if (data.error) {
+                    showConversationFeedback(false, 'Error: ' + data.error, expectedLine);
+                    return;
+                }
+
+                conversationState.score.total++;
+                if (data.correct) {
+                    conversationState.score.correct++;
+                }
+
+                // Display user's message
+                displayConversationMessage({
+                    speaker: conversationState.userRole,
+                    chinese: data.correct ? expectedLine.chinese : input,
+                    pinyin: data.correct ? expectedLine.pinyin : null,
+                    english: data.correct ? expectedLine.english : null
+                }, true, !data.correct);
+
+                // Show feedback with Next button
+                showConversationFeedback(data.correct, data.feedback, expectedLine, true);
+
+                if (data.correct) {
+                    conversationState.currentLineIndex++;
+                } else {
+                    // Show expected answer in conversation (so audio matches what's visible)
+                    displayConversationMessage({
+                        speaker: conversationState.userRole,
+                        chinese: expectedLine.chinese,
+                        pinyin: expectedLine.pinyin,
+                        english: expectedLine.english
+                    }, true, false, true);  // isCorrection = true
+                    conversationState.currentLineIndex++;
+                }
+            })
+            .catch(err => {
+                submitBtn.textContent = originalText;
+                submitBtn.disabled = false;
+                console.error('Conversation turn failed:', err);
+                showConversationFeedback(false, 'Network error. Please try again.', expectedLine);
+            });
+        }
+
+        function showConversationFeedback(correct, feedback, expectedLine, showNext = false) {
+            const feedbackEl = document.getElementById('conversation-feedback');
+            feedbackEl.className = 'conversation-feedback ' + (correct ? 'correct' : 'incorrect');
+
+            let html = `<div class="conversation-feedback-title">${correct ? '✓ Correct!' : '✗ Not quite'}</div>`;
+            html += `<div class="conversation-feedback-text">${feedback}</div>`;
+
+            if (!correct && expectedLine) {
+                html += `<div class="conversation-feedback-expected">`;
+                html += `<strong>Expected:</strong> ${expectedLine.chinese}`;
+                if (expectedLine.pinyin) html += ` (${expectedLine.pinyin})`;
+                if (expectedLine.chinese) {
+                    html += ` <button class="audio-btn small" onclick="readConversationLine('${expectedLine.chinese.replace(/'/g, "\\'")}')">🔊</button>`;
+                }
+                html += `</div>`;
+            }
+
+            if (showNext) {
+                html += `<div class="conversation-feedback-actions"><button onclick="nextConversationTurn()">Next →</button></div>`;
+            }
+
+            feedbackEl.innerHTML = html;
+            feedbackEl.style.display = 'block';
+        }
+
+        function nextConversationTurn() {
+            document.getElementById('conversation-feedback').style.display = 'none';
+            advanceConversation();
+        }
+
+        function showConversationHint() {
+            const dialogue = conversationState.dialogue;
+            const lines = dialogue.lines || [];
+            const expectedLine = lines[conversationState.currentLineIndex];
+
+            if (!expectedLine) return;
+
+            let hint = '';
+            if (conversationState.inputMode === 'characters') {
+                // Show pinyin as hint
+                hint = expectedLine.pinyin || expectedLine.chinese;
+            } else {
+                // Show first few characters/syllables
+                const text = conversationState.inputMode === 'pinyin_tones' ? expectedLine.pinyin : expectedLine.pinyin;
+                hint = text ? text.split(' ').slice(0, 2).join(' ') + '...' : expectedLine.chinese.slice(0, 2) + '...';
+            }
+
+            const feedbackEl = document.getElementById('conversation-feedback');
+            feedbackEl.className = 'conversation-feedback';
+            feedbackEl.innerHTML = `<div class="conversation-feedback-title">💡 Hint</div><div class="conversation-feedback-text">${hint}</div>`;
+            feedbackEl.style.display = 'block';
+        }
+
+        function skipConversationTurn() {
+            const dialogue = conversationState.dialogue;
+            const lines = dialogue.lines || [];
+            const expectedLine = lines[conversationState.currentLineIndex];
+
+            conversationState.score.total++;
+
+            // Display the expected line as user's message (marked as skipped)
+            displayConversationMessage({
+                speaker: conversationState.userRole,
+                chinese: expectedLine.chinese,
+                pinyin: expectedLine.pinyin,
+                english: expectedLine.english
+            }, true, true);
+
+            // Show what was expected with Next button
+            showConversationFeedback(false, 'Skipped. Here\'s what you should have said:', expectedLine, true);
+
+            conversationState.currentLineIndex++;
+        }
+
+        function showConversationComplete() {
+            document.getElementById('conversation-input-section').style.display = 'none';
+            document.getElementById('conversation-feedback').style.display = 'none';
+
+            const completeEl = document.getElementById('conversation-complete');
+            const summaryEl = document.getElementById('conversation-summary');
+
+            const score = conversationState.score;
+            const percentage = score.total > 0 ? Math.round(100 * score.correct / score.total) : 0;
+
+            summaryEl.innerHTML = `
+                <p>You completed the dialogue!</p>
+                <p style="font-size: 24px; margin: 15px 0;">${score.correct} / ${score.total} correct (${percentage}%)</p>
+            `;
+
+            completeEl.style.display = 'block';
+        }
+
+        function restartConversation() {
+            document.getElementById('conversation-complete').style.display = 'none';
+            startConversation();
+        }
+
+        function endConversation() {
+            document.getElementById('conversation-area').style.display = 'none';
+            document.getElementById('conversation-setup').style.display = 'block';
+        }

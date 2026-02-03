@@ -1698,7 +1698,13 @@ def api_import_preview():
 
     # Load existing vocabulary for duplicate detection
     vocab = load_vocab()
-    existing_chars = {v.get('characters') for v in vocab}
+    # Group all entries by character (there could be multiple with same chars)
+    existing_by_chars = {}
+    for i, v in enumerate(vocab):
+        c = v.get('characters', '')
+        if c not in existing_by_chars:
+            existing_by_chars[c] = []
+        existing_by_chars[c].append({'index': i, **v})
 
     # Process vocabulary items
     items = []
@@ -1707,7 +1713,8 @@ def api_import_preview():
 
         # Determine status
         comparison = None
-        if chars in existing_chars:
+        existing_entries = existing_by_chars.get(chars, [])
+        if existing_entries:
             status = 'duplicate'
         else:
             comparison = compare_with_dictionary(item, BY_CHARS)
@@ -1728,7 +1735,7 @@ def api_import_preview():
             'status': status
         }
 
-        # Add reference info for conflicts and sandhi variants
+        # Add reference info for conflicts, sandhi variants, and duplicates
         if status == 'conflict':
             processed['pypinyin'] = comparison.get('pypinyin')  # More reliable reference
             processed['dict_pinyin'] = comparison.get('dict_pinyin')
@@ -1737,6 +1744,17 @@ def api_import_preview():
             processed['pypinyin'] = comparison.get('pypinyin')
             processed['dict_pinyin'] = comparison.get('dict_pinyin')
             processed['note'] = 'Tone sandhi (textbook uses spoken form)'
+        elif status == 'duplicate' and existing_entries:
+            # Include all existing vocabulary entries for comparison
+            processed['existing'] = [
+                {
+                    'index': e.get('index'),
+                    'english': e.get('english', ''),
+                    'pinyin': e.get('pinyin', ''),
+                    'characters': e.get('characters', '')
+                }
+                for e in existing_entries
+            ]
 
         items.append(processed)
 
@@ -1768,15 +1786,35 @@ def api_import_confirm():
     existing_chars = {v.get('characters') for v in vocab}
 
     imported = []
+    replaced = []
     skipped = []
 
     for item in data['items']:
         chars = item.get('characters', '')
+        action = item.get('action', 'add')  # 'add', 'replace', 'skip'
 
-        # Skip if already exists
+        # Handle different actions for duplicates
         if chars in existing_chars:
-            skipped.append({'characters': chars, 'reason': 'duplicate'})
-            continue
+            if action == 'skip':
+                skipped.append({'characters': chars, 'reason': 'duplicate'})
+                continue
+            elif action == 'replace':
+                replace_index = item.get('replace_index')
+                if replace_index is not None and 0 <= replace_index < len(vocab):
+                    # Update existing entry, preserving stats and audio
+                    old_entry = vocab[replace_index]
+                    vocab[replace_index]['english'] = item.get('english', old_entry.get('english', ''))
+                    vocab[replace_index]['pinyin'] = item.get('pinyin', old_entry.get('pinyin', ''))
+                    replaced.append({'characters': chars, 'index': replace_index})
+                    continue
+                else:
+                    skipped.append({'characters': chars, 'reason': 'invalid replace index'})
+                    continue
+            elif action != 'add':
+                # Unknown action, skip
+                skipped.append({'characters': chars, 'reason': 'unknown action'})
+                continue
+            # action == 'add' falls through to add as new entry
 
         # Use expected pinyin (pypinyin preferred, dict as fallback) if requested
         use_expected = item.get('use_dictionary', False)
@@ -1812,16 +1850,270 @@ def api_import_confirm():
         imported.append(entry)
 
     # Save vocabulary
-    if imported:
+    if imported or replaced:
         save_vocab(vocab)
 
     return jsonify({
         'success': True,
         'imported': len(imported),
+        'replaced': len(replaced),
         'skipped': len(skipped),
         'skipped_items': skipped,
         'total_vocab': len(vocab)
     })
+
+
+# ============================================================================
+# CONVERSATION PRACTICE API
+# ============================================================================
+
+def _load_lesson_with_dialogues(lesson_path):
+    """Load extracted.json and return lesson info if it has dialogues."""
+    extracted_path = os.path.join(lesson_path, 'extracted.json')
+    if not os.path.exists(extracted_path):
+        return None
+
+    try:
+        with open(extracted_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
+
+    dialogues = data.get('dialogues', [])
+    if not dialogues:
+        return None
+
+    source = data.get('source', {})
+    return {
+        'source': source,
+        'dialogues': dialogues,
+        'vocabulary': data.get('vocabulary', []),
+        'grammar_patterns': data.get('grammar_patterns', [])
+    }
+
+
+@app.route('/api/conversation/lessons')
+def api_conversation_lessons():
+    """List all lessons that have dialogues available for practice."""
+    lessons = []
+
+    if not os.path.exists(IMPORT_DIR):
+        return jsonify({'lessons': []})
+
+    # Walk through import directory structure
+    for textbook in sorted(os.listdir(IMPORT_DIR)):
+        textbook_path = os.path.join(IMPORT_DIR, textbook)
+        if not os.path.isdir(textbook_path):
+            continue
+
+        for lesson_dir in sorted(os.listdir(textbook_path)):
+            lesson_path = os.path.join(textbook_path, lesson_dir)
+            if not os.path.isdir(lesson_path):
+                continue
+
+            lesson_data = _load_lesson_with_dialogues(lesson_path)
+            if not lesson_data:
+                continue
+
+            source = lesson_data['source']
+            lesson_id = f"{textbook}/{lesson_dir}"
+
+            lessons.append({
+                'id': lesson_id,
+                'lesson': source.get('lesson'),
+                'title': source.get('title', 'Untitled'),
+                'title_chinese': source.get('title_chinese'),
+                'textbook': source.get('textbook', textbook),
+                'dialogues': [
+                    {'id': d.get('id', f'dialogue_{i}'), 'title': d.get('title', f'Dialogue {i+1}')}
+                    for i, d in enumerate(lesson_data['dialogues'])
+                ]
+            })
+
+    return jsonify({'lessons': lessons})
+
+
+@app.route('/api/conversation/dialogue')
+def api_conversation_dialogue():
+    """Get full dialogue structure for practice."""
+    lesson_id = request.args.get('lesson', '')
+    dialogue_id = request.args.get('dialogue', '')
+
+    if not lesson_id:
+        return jsonify({'error': 'Missing lesson parameter'}), 400
+
+    lesson_path = os.path.join(IMPORT_DIR, lesson_id)
+    lesson_data = _load_lesson_with_dialogues(lesson_path)
+
+    if not lesson_data:
+        return jsonify({'error': 'Lesson not found or has no dialogues'}), 404
+
+    # Find the requested dialogue
+    dialogue = None
+    for i, d in enumerate(lesson_data['dialogues']):
+        d_id = d.get('id', f'dialogue_{i}')
+        if d_id == dialogue_id or (not dialogue_id and i == 0):
+            dialogue = d
+            break
+
+    if not dialogue:
+        return jsonify({'error': 'Dialogue not found'}), 404
+
+    # Extract unique speakers from dialogue lines
+    speakers = []
+    seen = set()
+    for line in dialogue.get('lines', []):
+        speaker = line.get('speaker', '')
+        if speaker and speaker not in seen:
+            speakers.append(speaker)
+            seen.add(speaker)
+
+    return jsonify({
+        'id': dialogue.get('id', 'dialogue'),
+        'title': dialogue.get('title', 'Dialogue'),
+        'speakers': speakers,
+        'lines': dialogue.get('lines', []),
+        'vocabulary': lesson_data['vocabulary'],
+        'grammar': lesson_data['grammar_patterns']
+    })
+
+
+@app.route('/api/conversation/turn', methods=['POST'])
+def api_conversation_turn():
+    """Process a user's conversation turn and get Claude's feedback."""
+    import anthropic
+
+    data = request.json
+    lesson_id = data.get('lesson_id', '')
+    dialogue_id = data.get('dialogue_id', '')
+    user_role = data.get('user_role', '')
+    line_index = data.get('line_index', 0)
+    user_input = data.get('user_input', '').strip()
+    input_mode = data.get('input_mode', 'characters')
+    strictness = data.get('strictness', 'gentle')
+
+    # Load dialogue
+    lesson_path = os.path.join(IMPORT_DIR, lesson_id)
+    lesson_data = _load_lesson_with_dialogues(lesson_path)
+    if not lesson_data:
+        return jsonify({'error': 'Lesson not found'}), 404
+
+    dialogue = None
+    for d in lesson_data['dialogues']:
+        if d.get('id') == dialogue_id:
+            dialogue = d
+            break
+    if not dialogue:
+        return jsonify({'error': 'Dialogue not found'}), 404
+
+    lines = dialogue.get('lines', [])
+    if line_index >= len(lines):
+        return jsonify({'error': 'Invalid line index', 'is_complete': True})
+
+    expected_line = lines[line_index]
+    expected_chinese = expected_line.get('chinese', '')
+    expected_pinyin = expected_line.get('pinyin', '')
+    expected_english = expected_line.get('english', '')
+
+    # Check if this is user's turn
+    if expected_line.get('speaker') != user_role:
+        # Not user's turn - return the line for display
+        next_idx = line_index + 1
+        next_line = lines[next_idx] if next_idx < len(lines) else None
+        return jsonify({
+            'is_user_turn': False,
+            'line': expected_line,
+            'next_line': next_line,
+            'next_index': next_idx,
+            'is_complete': next_idx >= len(lines)
+        })
+
+    # Get API key
+    api_key = get_api_key()
+    if not api_key:
+        return jsonify({'error': 'Claude API key not configured. Please set it in Settings.'}), 400
+
+    # Build context for Claude
+    vocab_summary = ', '.join([f"{v['characters']}({v.get('pinyin', '')})" for v in lesson_data['vocabulary'][:20]])
+
+    system_prompt = f"""You are a Mandarin Chinese language tutor helping a student practice a dialogue.
+
+The student is practicing this dialogue line:
+- Expected Chinese: {expected_chinese}
+- Pinyin: {expected_pinyin}
+- English meaning: {expected_english}
+
+Input mode: {input_mode}
+- If "characters": student should type Chinese characters
+- If "pinyin_tones": student should type pinyin with tone marks or numbers (e.g., nǐ hǎo or ni3 hao3)
+- If "pinyin_no_tones": student should type pinyin without tones (e.g., ni hao)
+
+Strictness: {strictness}
+- If "gentle": accept reasonable variations, minor typos, close attempts
+- If "strict": require exact match (for the selected input mode)
+
+Evaluate the student's response and provide feedback in JSON format:
+{{
+  "correct": true/false,
+  "feedback": "Brief feedback in a mix of English and Chinese, encouraging",
+  "correction": "If incorrect, show the correct form",
+  "notes": "Optional grammar or vocabulary notes"
+}}
+
+Keep feedback concise (1-2 sentences). Be encouraging. If they made a minor mistake in gentle mode, still mark as correct but note the improvement.
+"""
+
+    user_message = f"Student's response: {user_input}"
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=300,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}]
+        )
+
+        # Parse Claude's response
+        response_text = response.content[0].text
+        # Try to extract JSON from response
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            feedback_data = json.loads(json_match.group())
+        else:
+            feedback_data = {
+                'correct': False,
+                'feedback': response_text,
+                'correction': expected_chinese
+            }
+
+        # Determine next line
+        next_idx = line_index + 1
+        next_line = lines[next_idx] if next_idx < len(lines) else None
+
+        return jsonify({
+            'is_user_turn': True,
+            'correct': feedback_data.get('correct', False),
+            'feedback': feedback_data.get('feedback', ''),
+            'correction': feedback_data.get('correction'),
+            'notes': feedback_data.get('notes'),
+            'expected': {
+                'chinese': expected_chinese,
+                'pinyin': expected_pinyin,
+                'english': expected_english
+            },
+            'next_line': next_line,
+            'next_index': next_idx,
+            'is_complete': next_idx >= len(lines)
+        })
+
+    except anthropic.AuthenticationError:
+        return jsonify({'error': 'Invalid API key'}), 401
+    except anthropic.APIError as e:
+        return jsonify({'error': f'Claude API error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Error processing turn: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
