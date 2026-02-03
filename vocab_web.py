@@ -1373,12 +1373,25 @@ def api_tone_practice_reset():
 # CONFIG API
 # ============================================================================
 
+def get_api_key():
+    """Get Claude API key from config or environment variable."""
+    # Config takes precedence over env var
+    config = load_config()
+    if config.get('claude_api_key'):
+        return config['claude_api_key']
+    return os.environ.get('CLAUDE_API_KEY')
+
+
 @app.route('/api/config')
 def api_get_config():
     """Get configuration."""
     config = load_config()
-    # Add API key status (from env var, don't expose the actual key)
-    config['hasApiKey'] = bool(os.environ.get('CLAUDE_API_KEY'))
+    # Add API key status (don't expose the actual key, just whether it's set)
+    api_key = get_api_key()
+    config['hasApiKey'] = bool(api_key)
+    config['apiKeySource'] = 'config' if config.get('claude_api_key') else ('env' if api_key else None)
+    # Never send the actual key to the frontend
+    config.pop('claude_api_key', None)
     return jsonify(config)
 
 
@@ -1392,8 +1405,124 @@ def api_save_config():
     if 'quiz' in data:
         config['quiz'] = {**config.get('quiz', {}), **data['quiz']}
 
+    # Update API key if provided (empty string clears it)
+    if 'claude_api_key' in data:
+        key = data['claude_api_key'].strip()
+        if key:
+            config['claude_api_key'] = key
+        else:
+            config.pop('claude_api_key', None)
+
     save_config(config)
-    return jsonify({'success': True, 'config': config})
+
+    # Return config without the actual key
+    response_config = {k: v for k, v in config.items() if k != 'claude_api_key'}
+    response_config['hasApiKey'] = bool(get_api_key())
+    return jsonify({'success': True, 'config': response_config})
+
+
+@app.route('/api/config/clear_api_key', methods=['POST'])
+def api_clear_api_key():
+    """Clear the stored API key."""
+    config = load_config()
+    config.pop('claude_api_key', None)
+    save_config(config)
+    return jsonify({'success': True, 'hasApiKey': bool(os.environ.get('CLAUDE_API_KEY'))})
+
+
+def get_api_model():
+    """Get the configured Claude model."""
+    config = load_config()
+    return config.get('claude_model', 'claude-haiku-3-5-20241022')
+
+
+@app.route('/api/config/model', methods=['POST'])
+def api_save_model():
+    """Save the Claude model selection."""
+    data = request.json
+    model = data.get('model', 'claude-haiku-3-5-20241022')
+    # Validate model
+    valid_models = ['claude-haiku-3-5-20241022', 'claude-sonnet-4-20250514']
+    if model not in valid_models:
+        return jsonify({'success': False, 'error': 'Invalid model'}), 400
+    config = load_config()
+    config['claude_model'] = model
+    save_config(config)
+    return jsonify({'success': True, 'model': model})
+
+
+def get_api_usage():
+    """Get API usage stats."""
+    config = load_config()
+    return config.get('api_usage', {'input_tokens': 0, 'output_tokens': 0})
+
+
+def add_api_usage(input_tokens, output_tokens):
+    """Add to API usage stats."""
+    config = load_config()
+    usage = config.get('api_usage', {'input_tokens': 0, 'output_tokens': 0})
+    usage['input_tokens'] += input_tokens
+    usage['output_tokens'] += output_tokens
+    config['api_usage'] = usage
+    save_config(config)
+    return usage
+
+
+@app.route('/api/config/usage')
+def api_get_usage():
+    """Get API usage stats."""
+    usage = get_api_usage()
+    model = get_api_model()
+    # Calculate cost based on model
+    if model == 'claude-haiku-3-5-20241022':
+        cost = (usage['input_tokens'] * 0.25 + usage['output_tokens'] * 1.25) / 1_000_000
+    else:  # Sonnet
+        cost = (usage['input_tokens'] * 3 + usage['output_tokens'] * 15) / 1_000_000
+    return jsonify({
+        'input_tokens': usage['input_tokens'],
+        'output_tokens': usage['output_tokens'],
+        'cost': cost,
+        'model': model
+    })
+
+
+@app.route('/api/config/usage/reset', methods=['POST'])
+def api_reset_usage():
+    """Reset API usage stats."""
+    config = load_config()
+    config['api_usage'] = {'input_tokens': 0, 'output_tokens': 0}
+    save_config(config)
+    return jsonify({'success': True})
+
+
+@app.route('/api/config/test_api_key', methods=['POST'])
+def api_test_api_key():
+    """Test the Claude API key by making a simple API call."""
+    import anthropic
+
+    api_key = get_api_key()
+    if not api_key:
+        return jsonify({'success': False, 'error': 'No API key configured'})
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        model = get_api_model()
+        # Make a minimal API call to test the key
+        response = client.messages.create(
+            model=model,
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hi"}]
+        )
+        # Track usage from test call
+        if hasattr(response, 'usage'):
+            add_api_usage(response.usage.input_tokens, response.usage.output_tokens)
+        return jsonify({'success': True, 'message': f'API key is valid (using {model})'})
+    except anthropic.AuthenticationError:
+        return jsonify({'success': False, 'error': 'Invalid API key'})
+    except anthropic.APIError as e:
+        return jsonify({'success': False, 'error': f'API error: {str(e)}'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'})
 
 
 # ============================================================================
@@ -1638,7 +1767,13 @@ def api_import_preview():
 
     # Load existing vocabulary for duplicate detection
     vocab = load_vocab()
-    existing_chars = {v.get('characters') for v in vocab}
+    # Group all entries by character (there could be multiple with same chars)
+    existing_by_chars = {}
+    for i, v in enumerate(vocab):
+        c = v.get('characters', '')
+        if c not in existing_by_chars:
+            existing_by_chars[c] = []
+        existing_by_chars[c].append({'index': i, **v})
 
     # Process vocabulary items
     items = []
@@ -1647,7 +1782,8 @@ def api_import_preview():
 
         # Determine status
         comparison = None
-        if chars in existing_chars:
+        existing_entries = existing_by_chars.get(chars, [])
+        if existing_entries:
             status = 'duplicate'
         else:
             comparison = compare_with_dictionary(item, BY_CHARS)
@@ -1668,7 +1804,7 @@ def api_import_preview():
             'status': status
         }
 
-        # Add reference info for conflicts and sandhi variants
+        # Add reference info for conflicts, sandhi variants, and duplicates
         if status == 'conflict':
             processed['pypinyin'] = comparison.get('pypinyin')  # More reliable reference
             processed['dict_pinyin'] = comparison.get('dict_pinyin')
@@ -1677,6 +1813,17 @@ def api_import_preview():
             processed['pypinyin'] = comparison.get('pypinyin')
             processed['dict_pinyin'] = comparison.get('dict_pinyin')
             processed['note'] = 'Tone sandhi (textbook uses spoken form)'
+        elif status == 'duplicate' and existing_entries:
+            # Include all existing vocabulary entries for comparison
+            processed['existing'] = [
+                {
+                    'index': e.get('index'),
+                    'english': e.get('english', ''),
+                    'pinyin': e.get('pinyin', ''),
+                    'characters': e.get('characters', '')
+                }
+                for e in existing_entries
+            ]
 
         items.append(processed)
 
@@ -1708,15 +1855,35 @@ def api_import_confirm():
     existing_chars = {v.get('characters') for v in vocab}
 
     imported = []
+    replaced = []
     skipped = []
 
     for item in data['items']:
         chars = item.get('characters', '')
+        action = item.get('action', 'add')  # 'add', 'replace', 'skip'
 
-        # Skip if already exists
+        # Handle different actions for duplicates
         if chars in existing_chars:
-            skipped.append({'characters': chars, 'reason': 'duplicate'})
-            continue
+            if action == 'skip':
+                skipped.append({'characters': chars, 'reason': 'duplicate'})
+                continue
+            elif action == 'replace':
+                replace_index = item.get('replace_index')
+                if replace_index is not None and 0 <= replace_index < len(vocab):
+                    # Update existing entry, preserving stats and audio
+                    old_entry = vocab[replace_index]
+                    vocab[replace_index]['english'] = item.get('english', old_entry.get('english', ''))
+                    vocab[replace_index]['pinyin'] = item.get('pinyin', old_entry.get('pinyin', ''))
+                    replaced.append({'characters': chars, 'index': replace_index})
+                    continue
+                else:
+                    skipped.append({'characters': chars, 'reason': 'invalid replace index'})
+                    continue
+            elif action != 'add':
+                # Unknown action, skip
+                skipped.append({'characters': chars, 'reason': 'unknown action'})
+                continue
+            # action == 'add' falls through to add as new entry
 
         # Use expected pinyin (pypinyin preferred, dict as fallback) if requested
         use_expected = item.get('use_dictionary', False)
@@ -1752,16 +1919,310 @@ def api_import_confirm():
         imported.append(entry)
 
     # Save vocabulary
-    if imported:
+    if imported or replaced:
         save_vocab(vocab)
 
     return jsonify({
         'success': True,
         'imported': len(imported),
+        'replaced': len(replaced),
         'skipped': len(skipped),
         'skipped_items': skipped,
         'total_vocab': len(vocab)
     })
+
+
+# ============================================================================
+# CONVERSATION PRACTICE API
+# ============================================================================
+
+def _load_lesson_with_dialogues(lesson_path):
+    """Load extracted.json and return lesson info if it has dialogues."""
+    extracted_path = os.path.join(lesson_path, 'extracted.json')
+    if not os.path.exists(extracted_path):
+        return None
+
+    try:
+        with open(extracted_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
+
+    dialogues = data.get('dialogues', [])
+    if not dialogues:
+        return None
+
+    source = data.get('source', {})
+    return {
+        'source': source,
+        'dialogues': dialogues,
+        'vocabulary': data.get('vocabulary', []),
+        'grammar_patterns': data.get('grammar_patterns', [])
+    }
+
+
+@app.route('/api/conversation/lessons')
+def api_conversation_lessons():
+    """List all lessons that have dialogues available for practice."""
+    lessons = []
+
+    if not os.path.exists(IMPORT_DIR):
+        return jsonify({'lessons': []})
+
+    # Walk through import directory structure
+    for textbook in sorted(os.listdir(IMPORT_DIR)):
+        textbook_path = os.path.join(IMPORT_DIR, textbook)
+        if not os.path.isdir(textbook_path):
+            continue
+
+        for lesson_dir in sorted(os.listdir(textbook_path)):
+            lesson_path = os.path.join(textbook_path, lesson_dir)
+            if not os.path.isdir(lesson_path):
+                continue
+
+            lesson_data = _load_lesson_with_dialogues(lesson_path)
+            if not lesson_data:
+                continue
+
+            source = lesson_data['source']
+            lesson_id = f"{textbook}/{lesson_dir}"
+
+            lessons.append({
+                'id': lesson_id,
+                'lesson': source.get('lesson'),
+                'title': source.get('title', 'Untitled'),
+                'title_chinese': source.get('title_chinese'),
+                'textbook': source.get('textbook', textbook),
+                'dialogues': [
+                    {'id': d.get('id', f'dialogue_{i}'), 'title': d.get('title', f'Dialogue {i+1}')}
+                    for i, d in enumerate(lesson_data['dialogues'])
+                ]
+            })
+
+    return jsonify({'lessons': lessons})
+
+
+@app.route('/api/conversation/dialogue')
+def api_conversation_dialogue():
+    """Get full dialogue structure for practice."""
+    lesson_id = request.args.get('lesson', '')
+    dialogue_id = request.args.get('dialogue', '')
+
+    if not lesson_id:
+        return jsonify({'error': 'Missing lesson parameter'}), 400
+
+    lesson_path = os.path.join(IMPORT_DIR, lesson_id)
+    lesson_data = _load_lesson_with_dialogues(lesson_path)
+
+    if not lesson_data:
+        return jsonify({'error': 'Lesson not found or has no dialogues'}), 404
+
+    # Find the requested dialogue
+    dialogue = None
+    for i, d in enumerate(lesson_data['dialogues']):
+        d_id = d.get('id', f'dialogue_{i}')
+        if d_id == dialogue_id or (not dialogue_id and i == 0):
+            dialogue = d
+            break
+
+    if not dialogue:
+        return jsonify({'error': 'Dialogue not found'}), 404
+
+    # Extract unique speakers from dialogue lines
+    speakers = []
+    seen = set()
+    for line in dialogue.get('lines', []):
+        speaker = line.get('speaker', '')
+        if speaker and speaker not in seen:
+            speakers.append(speaker)
+            seen.add(speaker)
+
+    return jsonify({
+        'id': dialogue.get('id', 'dialogue'),
+        'title': dialogue.get('title', 'Dialogue'),
+        'speakers': speakers,
+        'lines': dialogue.get('lines', []),
+        'vocabulary': lesson_data['vocabulary'],
+        'grammar': lesson_data['grammar_patterns']
+    })
+
+
+@app.route('/api/conversation/turn', methods=['POST'])
+def api_conversation_turn():
+    """Process a user's conversation turn and get Claude's feedback."""
+    import anthropic
+
+    data = request.json
+    lesson_id = data.get('lesson_id', '')
+    dialogue_id = data.get('dialogue_id', '')
+    user_role = data.get('user_role', '')
+    line_index = data.get('line_index', 0)
+    user_input = data.get('user_input', '').strip()
+    input_mode = data.get('input_mode', 'characters')
+    validation = data.get('validation', {})
+
+    # Extract validation options with defaults
+    allow_proper_nouns = validation.get('allowProperNouns', True)
+    allow_synonyms = validation.get('allowSynonyms', True)
+    tolerate_typos = validation.get('tolerateTypos', True)
+    forgive_tone_errors = validation.get('forgiveToneErrors', True)
+    structure_mode = validation.get('structure', 'meaning')  # 'meaning' or 'grammar'
+
+    # Load dialogue
+    lesson_path = os.path.join(IMPORT_DIR, lesson_id)
+    lesson_data = _load_lesson_with_dialogues(lesson_path)
+    if not lesson_data:
+        return jsonify({'error': 'Lesson not found'}), 404
+
+    dialogue = None
+    for d in lesson_data['dialogues']:
+        if d.get('id') == dialogue_id:
+            dialogue = d
+            break
+    if not dialogue:
+        return jsonify({'error': 'Dialogue not found'}), 404
+
+    lines = dialogue.get('lines', [])
+    if line_index >= len(lines):
+        return jsonify({'error': 'Invalid line index', 'is_complete': True})
+
+    expected_line = lines[line_index]
+    expected_chinese = expected_line.get('chinese', '')
+    expected_pinyin = expected_line.get('pinyin', '')
+    expected_english = expected_line.get('english', '')
+
+    # Check if this is user's turn
+    if expected_line.get('speaker') != user_role:
+        # Not user's turn - return the line for display
+        next_idx = line_index + 1
+        next_line = lines[next_idx] if next_idx < len(lines) else None
+        return jsonify({
+            'is_user_turn': False,
+            'line': expected_line,
+            'next_line': next_line,
+            'next_index': next_idx,
+            'is_complete': next_idx >= len(lines)
+        })
+
+    # Get API key
+    api_key = get_api_key()
+    if not api_key:
+        return jsonify({'error': 'Claude API key not configured. Please set it in Settings.'}), 400
+
+    # Build validation rules for the prompt
+    validation_rules = []
+    if allow_proper_nouns:
+        validation_rules.append("- Proper noun substitutions OK (names, places can be different)")
+    else:
+        validation_rules.append("- Proper nouns must match exactly")
+
+    if allow_synonyms:
+        validation_rules.append("- Synonyms and equivalent expressions OK if valid Chinese")
+    else:
+        validation_rules.append("- Must use the expected vocabulary (no synonyms)")
+
+    if tolerate_typos:
+        validation_rules.append("- Minor typos tolerated (mark correct but note the typo)")
+    else:
+        validation_rules.append("- No typos allowed - spelling must be exact")
+
+    if input_mode in ('pinyin_tones', 'pinyin_no_tones'):
+        if forgive_tone_errors:
+            validation_rules.append("- Tone errors forgiven (mark correct but note the tone issue)")
+        else:
+            validation_rules.append("- Tones must be correct")
+
+    if structure_mode == 'meaning':
+        validation_rules.append("- Structure: Same meaning is sufficient (flexible word order/phrasing OK)")
+    else:
+        validation_rules.append("- Structure: Must follow the same grammatical structure as expected")
+
+    validation_text = '\n'.join(validation_rules)
+
+    system_prompt = f"""You are a Mandarin Chinese language tutor helping a student practice a dialogue.
+
+The student is practicing this dialogue line:
+- Expected Chinese: {expected_chinese}
+- Pinyin: {expected_pinyin}
+- English meaning: {expected_english}
+
+Input mode: {input_mode}
+- If "characters": student must type Chinese characters (not pinyin)
+- If "pinyin_tones": student types pinyin with tone marks (nǐ hǎo) or numbers (ni3 hao3) - both formats OK
+- If "pinyin_no_tones": student types pinyin without tones (ni hao) - don't penalise if they include tones
+
+Validation rules:
+{validation_text}
+
+Evaluate the student's response and provide feedback in JSON format:
+{{
+  "correct": true/false,
+  "feedback": "Brief feedback in a mix of English and Chinese, encouraging",
+  "correction": "If incorrect, show the correct form",
+  "notes": "Optional grammar or vocabulary notes"
+}}
+
+Keep feedback concise (1-2 sentences). Be encouraging.
+"""
+
+    user_message = f"Student's response: {user_input}"
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        model = get_api_model()
+        response = client.messages.create(
+            model=model,
+            max_tokens=300,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}]
+        )
+
+        # Track usage
+        usage_data = None
+        if hasattr(response, 'usage'):
+            usage_data = add_api_usage(response.usage.input_tokens, response.usage.output_tokens)
+
+        # Parse Claude's response
+        response_text = response.content[0].text
+        # Try to extract JSON from response
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            feedback_data = json.loads(json_match.group())
+        else:
+            feedback_data = {
+                'correct': False,
+                'feedback': response_text,
+                'correction': expected_chinese
+            }
+
+        # Determine next line
+        next_idx = line_index + 1
+        next_line = lines[next_idx] if next_idx < len(lines) else None
+
+        return jsonify({
+            'is_user_turn': True,
+            'correct': feedback_data.get('correct', False),
+            'feedback': feedback_data.get('feedback', ''),
+            'correction': feedback_data.get('correction'),
+            'notes': feedback_data.get('notes'),
+            'expected': {
+                'chinese': expected_chinese,
+                'pinyin': expected_pinyin,
+                'english': expected_english
+            },
+            'next_line': next_line,
+            'next_index': next_idx,
+            'is_complete': next_idx >= len(lines),
+            'usage': usage_data
+        })
+
+    except anthropic.AuthenticationError:
+        return jsonify({'error': 'Invalid API key'}), 401
+    except anthropic.APIError as e:
+        return jsonify({'error': f'Claude API error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Error processing turn: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

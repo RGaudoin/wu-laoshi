@@ -41,7 +41,7 @@
         <div class="tabs">
             <button class="tab active" onclick="showSubTab('learn', 'quiz')">Quiz</button>
             <button class="tab" onclick="showSubTab('learn', 'tones')">Tones</button>
-            <!-- Future: Conversation tab -->
+            <button class="tab" onclick="showSubTab('learn', 'conversation')">Conversation</button>
         </div>
 
         <!-- QUIZ TAB -->
@@ -222,6 +222,130 @@
                 </div>
             </div>
         </div>
+
+        <!-- CONVERSATION TAB -->
+        <div id="learn-conversation" class="tab-content">
+            <div id="conversation-setup" class="conversation-setup">
+                <h3>Dialogue Practice</h3>
+                <p style="color: #666; margin-bottom: 20px;">Practice lesson dialogues with Claude as your conversation partner.</p>
+
+                <div class="conversation-settings">
+                    <div class="setting-row">
+                        <label>Lesson:</label>
+                        <select id="conversation-lesson" onchange="loadDialogueOptions()">
+                            <option value="">-- Select a lesson --</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Dialogue:</label>
+                        <select id="conversation-dialogue" onchange="loadDialogueDetails()">
+                            <option value="">-- Select lesson first --</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Your role:</label>
+                        <select id="conversation-role">
+                            <option value="">-- Select dialogue first --</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Input mode:</label>
+                        <select id="conversation-input-mode" onchange="updateConversationPreview()">
+                            <option value="characters">Characters (中文)</option>
+                            <option value="pinyin_tones">Pinyin with tones (nǐ hǎo)</option>
+                            <option value="pinyin_no_tones">Pinyin without tones (ni hao)</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Show partner:</label>
+                        <select id="conversation-display-mode" onchange="updateConversationPreview()">
+                            <option value="all">Characters + Pinyin + English</option>
+                            <option value="chinese_pinyin">Characters + Pinyin</option>
+                            <option value="chinese_english">Characters + English</option>
+                            <option value="chinese">Characters only</option>
+                            <option value="pinyin">Pinyin only</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Validation:</label>
+                        <select id="conversation-preset" onchange="applyValidationPreset()">
+                            <option value="gentle">Gentle (default)</option>
+                            <option value="strict">Strict</option>
+                            <option value="custom">Custom</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="conversation-validation-options" class="validation-options">
+                    <div class="validation-option">
+                        <label><input type="checkbox" id="val-proper-nouns" checked> Allow proper noun substitutions (names, places)</label>
+                    </div>
+                    <div class="validation-option">
+                        <label><input type="checkbox" id="val-synonyms" checked> Allow valid synonyms</label>
+                    </div>
+                    <div class="validation-option">
+                        <label><input type="checkbox" id="val-typos" checked> Tolerate minor typos</label>
+                    </div>
+                    <div class="validation-option">
+                        <label><input type="checkbox" id="val-tone-errors" checked> Forgive tone errors (pinyin modes)</label>
+                    </div>
+                    <div class="validation-option">
+                        <label>Structure:
+                            <select id="val-structure">
+                                <option value="meaning">Same meaning (flexible)</option>
+                                <option value="grammar">Same grammatical structure</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="conversation-dialogue-preview" class="dialogue-preview" style="display: none;">
+                    <h4>Dialogue Preview</h4>
+                    <div id="conversation-preview-lines"></div>
+                </div>
+
+                <button onclick="startConversation()" id="start-conversation-btn" disabled>Start Conversation</button>
+                <div id="conversation-setup-error" class="error-message" style="display: none;"></div>
+            </div>
+
+            <div id="conversation-area" class="conversation-area" style="display: none;">
+                <div class="conversation-header">
+                    <span id="conversation-title"></span>
+                    <button class="secondary small" onclick="endConversation()">End</button>
+                </div>
+
+                <div id="conversation-messages" class="conversation-messages"></div>
+
+                <div id="conversation-input-section" class="conversation-input-section">
+                    <div class="conversation-prompt">
+                        <span id="conversation-your-role"></span>'s turn:
+                    </div>
+                    <div class="conversation-input-row">
+                        <input type="text" id="conversation-input" class="chinese" placeholder="Type your response...">
+                        <button onclick="submitConversationTurn()">Send</button>
+                    </div>
+                    <div class="conversation-actions">
+                        <button class="secondary small" onclick="showConversationHint()">💡 Hint</button>
+                        <button class="secondary small" onclick="skipConversationTurn()">⏭ Skip</button>
+                    </div>
+                </div>
+
+                <div id="conversation-feedback" class="conversation-feedback" style="display: none;"></div>
+
+                <div id="conversation-complete" class="conversation-complete" style="display: none;">
+                    <h3>Dialogue Complete!</h3>
+                    <div id="conversation-summary"></div>
+                    <button onclick="restartConversation()">Practice Again</button>
+                    <button class="secondary" onclick="endConversation()">Choose Another</button>
+                </div>
+            </div>
+
+            <div id="conversation-no-api-key" class="conversation-no-api-key" style="display: none;">
+                <h3>API Key Required</h3>
+                <p>Conversation practice requires a Claude API key. Please configure your API key in Settings.</p>
+                <button onclick="showSection('settings')">Go to Settings</button>
+            </div>
+        </div>
     </div>
 
     <!-- VOCABULARY SECTION -->
@@ -339,8 +463,41 @@
             <button class="collapsible collapsed" onclick="toggleCollapsible(this)">API</button>
             <div class="collapsible-content collapsed">
                 <label><strong>Claude API Key</strong></label>
-                <p style="color: #666; font-size: 14px; margin: 5px 0;">Required for Import and Practice features</p>
+                <p style="color: #666; font-size: 14px; margin: 5px 0;">Required for interactive Practice features</p>
                 <input type="password" id="api-key" placeholder="sk-ant-..." style="width: 100%; margin-top: 5px;">
+                <div style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button class="secondary" onclick="testApiKey()">Test Key</button>
+                    <button class="secondary" onclick="clearApiKey()">Clear Saved Key</button>
+                </div>
+                <p id="api-key-status" style="font-size: 13px; margin-top: 8px;"></p>
+
+                <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
+
+                <label><strong>Model</strong></label>
+                <p style="color: #666; font-size: 14px; margin: 5px 0;">Haiku is faster and cheaper; Sonnet is more capable</p>
+                <select id="api-model" onchange="saveApiModel()" style="width: 100%; padding: 8px; margin-top: 5px;">
+                    <option value="claude-haiku-3-5-20241022">Claude 3.5 Haiku (~$0.0003/turn)</option>
+                    <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (~$0.003/turn)</option>
+                </select>
+
+                <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">
+
+                <label><strong>Usage</strong></label>
+                <div id="api-usage" style="margin-top: 8px; padding: 10px; background: #f5f5f5; border-radius: 5px; font-size: 13px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>Input tokens:</span>
+                        <span id="usage-input-tokens">0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span>Output tokens:</span>
+                        <span id="usage-output-tokens">0</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 5px; margin-top: 5px;">
+                        <span>Estimated cost:</span>
+                        <span id="usage-cost">$0.0000</span>
+                    </div>
+                </div>
+                <button class="secondary" onclick="resetApiUsage()" style="margin-top: 10px;">Reset Usage Counter</button>
             </div>
 
             <!-- Quiz Section -->

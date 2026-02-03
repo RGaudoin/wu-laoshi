@@ -7,7 +7,7 @@ Use conda environment `mandarin`:
 conda activate mandarin
 ```
 
-Dependencies: `pypinyin`, `gTTS`, `flask`
+Dependencies: `pypinyin`, `gTTS`, `flask`, `anthropic` (for interactive trainer)
 
 ## Project Structure
 
