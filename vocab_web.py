@@ -1430,6 +1430,71 @@ def api_clear_api_key():
     return jsonify({'success': True, 'hasApiKey': bool(os.environ.get('CLAUDE_API_KEY'))})
 
 
+def get_api_model():
+    """Get the configured Claude model."""
+    config = load_config()
+    return config.get('claude_model', 'claude-haiku-3-5-20241022')
+
+
+@app.route('/api/config/model', methods=['POST'])
+def api_save_model():
+    """Save the Claude model selection."""
+    data = request.json
+    model = data.get('model', 'claude-haiku-3-5-20241022')
+    # Validate model
+    valid_models = ['claude-haiku-3-5-20241022', 'claude-sonnet-4-20250514']
+    if model not in valid_models:
+        return jsonify({'success': False, 'error': 'Invalid model'}), 400
+    config = load_config()
+    config['claude_model'] = model
+    save_config(config)
+    return jsonify({'success': True, 'model': model})
+
+
+def get_api_usage():
+    """Get API usage stats."""
+    config = load_config()
+    return config.get('api_usage', {'input_tokens': 0, 'output_tokens': 0})
+
+
+def add_api_usage(input_tokens, output_tokens):
+    """Add to API usage stats."""
+    config = load_config()
+    usage = config.get('api_usage', {'input_tokens': 0, 'output_tokens': 0})
+    usage['input_tokens'] += input_tokens
+    usage['output_tokens'] += output_tokens
+    config['api_usage'] = usage
+    save_config(config)
+    return usage
+
+
+@app.route('/api/config/usage')
+def api_get_usage():
+    """Get API usage stats."""
+    usage = get_api_usage()
+    model = get_api_model()
+    # Calculate cost based on model
+    if model == 'claude-haiku-3-5-20241022':
+        cost = (usage['input_tokens'] * 0.25 + usage['output_tokens'] * 1.25) / 1_000_000
+    else:  # Sonnet
+        cost = (usage['input_tokens'] * 3 + usage['output_tokens'] * 15) / 1_000_000
+    return jsonify({
+        'input_tokens': usage['input_tokens'],
+        'output_tokens': usage['output_tokens'],
+        'cost': cost,
+        'model': model
+    })
+
+
+@app.route('/api/config/usage/reset', methods=['POST'])
+def api_reset_usage():
+    """Reset API usage stats."""
+    config = load_config()
+    config['api_usage'] = {'input_tokens': 0, 'output_tokens': 0}
+    save_config(config)
+    return jsonify({'success': True})
+
+
 @app.route('/api/config/test_api_key', methods=['POST'])
 def api_test_api_key():
     """Test the Claude API key by making a simple API call."""
@@ -1441,13 +1506,17 @@ def api_test_api_key():
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
+        model = get_api_model()
         # Make a minimal API call to test the key
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=model,
             max_tokens=10,
             messages=[{"role": "user", "content": "Hi"}]
         )
-        return jsonify({'success': True, 'message': 'API key is valid'})
+        # Track usage from test call
+        if hasattr(response, 'usage'):
+            add_api_usage(response.usage.input_tokens, response.usage.output_tokens)
+        return jsonify({'success': True, 'message': f'API key is valid (using {model})'})
     except anthropic.AuthenticationError:
         return jsonify({'success': False, 'error': 'Invalid API key'})
     except anthropic.APIError as e:
@@ -1990,7 +2059,14 @@ def api_conversation_turn():
     line_index = data.get('line_index', 0)
     user_input = data.get('user_input', '').strip()
     input_mode = data.get('input_mode', 'characters')
-    strictness = data.get('strictness', 'gentle')
+    validation = data.get('validation', {})
+
+    # Extract validation options with defaults
+    allow_proper_nouns = validation.get('allowProperNouns', True)
+    allow_synonyms = validation.get('allowSynonyms', True)
+    tolerate_typos = validation.get('tolerateTypos', True)
+    forgive_tone_errors = validation.get('forgiveToneErrors', True)
+    structure_mode = validation.get('structure', 'meaning')  # 'meaning' or 'grammar'
 
     # Load dialogue
     lesson_path = os.path.join(IMPORT_DIR, lesson_id)
@@ -2033,8 +2109,35 @@ def api_conversation_turn():
     if not api_key:
         return jsonify({'error': 'Claude API key not configured. Please set it in Settings.'}), 400
 
-    # Build context for Claude
-    vocab_summary = ', '.join([f"{v['characters']}({v.get('pinyin', '')})" for v in lesson_data['vocabulary'][:20]])
+    # Build validation rules for the prompt
+    validation_rules = []
+    if allow_proper_nouns:
+        validation_rules.append("- Proper noun substitutions OK (names, places can be different)")
+    else:
+        validation_rules.append("- Proper nouns must match exactly")
+
+    if allow_synonyms:
+        validation_rules.append("- Synonyms and equivalent expressions OK if valid Chinese")
+    else:
+        validation_rules.append("- Must use the expected vocabulary (no synonyms)")
+
+    if tolerate_typos:
+        validation_rules.append("- Minor typos tolerated (mark correct but note the typo)")
+    else:
+        validation_rules.append("- No typos allowed - spelling must be exact")
+
+    if input_mode in ('pinyin_tones', 'pinyin_no_tones'):
+        if forgive_tone_errors:
+            validation_rules.append("- Tone errors forgiven (mark correct but note the tone issue)")
+        else:
+            validation_rules.append("- Tones must be correct")
+
+    if structure_mode == 'meaning':
+        validation_rules.append("- Structure: Same meaning is sufficient (flexible word order/phrasing OK)")
+    else:
+        validation_rules.append("- Structure: Must follow the same grammatical structure as expected")
+
+    validation_text = '\n'.join(validation_rules)
 
     system_prompt = f"""You are a Mandarin Chinese language tutor helping a student practice a dialogue.
 
@@ -2044,13 +2147,12 @@ The student is practicing this dialogue line:
 - English meaning: {expected_english}
 
 Input mode: {input_mode}
-- If "characters": student should type Chinese characters
-- If "pinyin_tones": student should type pinyin with tone marks or numbers (e.g., nǐ hǎo or ni3 hao3)
-- If "pinyin_no_tones": student should type pinyin without tones (e.g., ni hao)
+- If "characters": student must type Chinese characters (not pinyin)
+- If "pinyin_tones": student types pinyin with tone marks (nǐ hǎo) or numbers (ni3 hao3) - both formats OK
+- If "pinyin_no_tones": student types pinyin without tones (ni hao) - don't penalise if they include tones
 
-Strictness: {strictness}
-- If "gentle": accept reasonable variations, minor typos, close attempts
-- If "strict": require exact match (for the selected input mode)
+Validation rules:
+{validation_text}
 
 Evaluate the student's response and provide feedback in JSON format:
 {{
@@ -2060,19 +2162,25 @@ Evaluate the student's response and provide feedback in JSON format:
   "notes": "Optional grammar or vocabulary notes"
 }}
 
-Keep feedback concise (1-2 sentences). Be encouraging. If they made a minor mistake in gentle mode, still mark as correct but note the improvement.
+Keep feedback concise (1-2 sentences). Be encouraging.
 """
 
     user_message = f"Student's response: {user_input}"
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
+        model = get_api_model()
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=model,
             max_tokens=300,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}]
         )
+
+        # Track usage
+        usage_data = None
+        if hasattr(response, 'usage'):
+            usage_data = add_api_usage(response.usage.input_tokens, response.usage.output_tokens)
 
         # Parse Claude's response
         response_text = response.content[0].text
@@ -2105,7 +2213,8 @@ Keep feedback concise (1-2 sentences). Be encouraging. If they made a minor mist
             },
             'next_line': next_line,
             'next_index': next_idx,
-            'is_complete': next_idx >= len(lines)
+            'is_complete': next_idx >= len(lines),
+            'usage': usage_data
         })
 
     except anthropic.AuthenticationError:

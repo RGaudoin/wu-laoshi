@@ -669,6 +669,38 @@ select {
     border-radius: 5px;
     max-width: 400px;
 }
+.validation-options {
+    display: none;
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+.validation-option {
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+.validation-option:last-child {
+    margin-bottom: 0;
+}
+.validation-option label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #555;
+}
+.validation-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+.validation-option select {
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-left: 5px;
+}
 .dialogue-preview {
     background: #f9f9f9;
     padding: 15px;

@@ -165,6 +165,7 @@ let quizEntries = [];
 
         function openSettings() {
             document.getElementById('settings-modal').classList.add('active');
+            loadApiUsage(); // Refresh usage stats
         }
 
         function toggleCollapsible(btn) {
@@ -333,10 +334,55 @@ let quizEntries = [];
                 });
         }
 
+        function saveApiModel() {
+            const model = document.getElementById('api-model').value;
+            fetch('/api/config/model', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({model: model})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    loadApiUsage(); // Recalculate cost with new model
+                }
+            })
+            .catch(err => console.error('Failed to save model:', err));
+        }
+
+        function loadApiUsage() {
+            fetch('/api/config/usage')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('usage-input-tokens').textContent = data.input_tokens.toLocaleString();
+                    document.getElementById('usage-output-tokens').textContent = data.output_tokens.toLocaleString();
+                    document.getElementById('usage-cost').textContent = '$' + data.cost.toFixed(4);
+                    // Also set the model dropdown
+                    const modelSelect = document.getElementById('api-model');
+                    if (modelSelect && data.model) {
+                        modelSelect.value = data.model;
+                    }
+                })
+                .catch(err => console.error('Failed to load usage:', err));
+        }
+
+        function resetApiUsage() {
+            if (!confirm('Reset the usage counter to zero?')) return;
+            fetch('/api/config/usage/reset', {method: 'POST'})
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        loadApiUsage();
+                    }
+                })
+                .catch(err => console.error('Failed to reset usage:', err));
+        }
+
         // Load settings on page load
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
             loadTags();
+            loadApiUsage();
         });
 
         // EDIT MODAL
@@ -2643,12 +2689,51 @@ let quizEntries = [];
             currentLineIndex: 0,
             inputMode: 'characters',
             displayMode: 'all',
-            strictness: 'gentle',
+            validation: {
+                allowProperNouns: true,
+                allowSynonyms: true,
+                tolerateTypos: true,
+                forgiveToneErrors: true,
+                structure: 'meaning'  // 'meaning' or 'grammar'
+            },
             score: { correct: 0, total: 0 },
             previewExpanded: false
         };
 
         let conversationLessons = [];
+
+        function applyValidationPreset() {
+            const preset = document.getElementById('conversation-preset').value;
+            const optionsEl = document.getElementById('conversation-validation-options');
+
+            if (preset === 'gentle') {
+                document.getElementById('val-proper-nouns').checked = true;
+                document.getElementById('val-synonyms').checked = true;
+                document.getElementById('val-typos').checked = true;
+                document.getElementById('val-tone-errors').checked = true;
+                document.getElementById('val-structure').value = 'meaning';
+            } else if (preset === 'strict') {
+                document.getElementById('val-proper-nouns').checked = true;
+                document.getElementById('val-synonyms').checked = true;
+                document.getElementById('val-typos').checked = false;
+                document.getElementById('val-tone-errors').checked = false;
+                document.getElementById('val-structure').value = 'grammar';
+            }
+            // 'custom' - leave as-is
+
+            // Show/hide options based on preset
+            optionsEl.style.display = (preset === 'custom') ? 'block' : 'none';
+        }
+
+        function getValidationOptions() {
+            return {
+                allowProperNouns: document.getElementById('val-proper-nouns').checked,
+                allowSynonyms: document.getElementById('val-synonyms').checked,
+                tolerateTypos: document.getElementById('val-typos').checked,
+                forgiveToneErrors: document.getElementById('val-tone-errors').checked,
+                structure: document.getElementById('val-structure').value
+            };
+        }
 
         function loadConversationLessons() {
             fetch('/api/conversation/lessons')
@@ -2876,7 +2961,7 @@ let quizEntries = [];
             const userRole = document.getElementById('conversation-role').value;
             const inputMode = document.getElementById('conversation-input-mode').value;
             const displayMode = document.getElementById('conversation-display-mode').value;
-            const strictness = document.getElementById('conversation-strictness').value;
+            const validation = getValidationOptions();
 
             if (!lessonId || !dialogueId || !userRole) {
                 alert('Please select lesson, dialogue, and role.');
@@ -2888,7 +2973,7 @@ let quizEntries = [];
             conversationState.userRole = userRole;
             conversationState.inputMode = inputMode;
             conversationState.displayMode = displayMode;
-            conversationState.strictness = strictness;
+            conversationState.validation = validation;
             conversationState.currentLineIndex = 0;
             conversationState.score = { correct: 0, total: 0 };
 
@@ -3029,13 +3114,18 @@ let quizEntries = [];
                     line_index: conversationState.currentLineIndex,
                     user_input: input,
                     input_mode: conversationState.inputMode,
-                    strictness: conversationState.strictness
+                    validation: conversationState.validation
                 })
             })
             .then(r => r.json())
             .then(data => {
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
+
+                // Update usage display if available
+                if (data.usage) {
+                    loadApiUsage();
+                }
 
                 if (data.error) {
                     showConversationFeedback(false, 'Error: ' + data.error, expectedLine);
