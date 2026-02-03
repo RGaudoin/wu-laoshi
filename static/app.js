@@ -889,7 +889,29 @@ let quizEntries = [];
 
         // ===== TONE AUDIO CURATION =====
 
-        let curationItems = [];
+        let curationSyllables = [];
+
+        // Status indicator helper
+        function statusIndicator(status) {
+            if (status === 'accepted' || status === 'unflagged') return '<span class="curation-status curation-ok" title="OK">●</span>';
+            if (status === 'flagged') return '<span class="curation-status curation-flagged" title="Flagged">⚠</span>';
+            if (status === 'espeak') return '<span class="curation-status curation-espeak" title="espeak-ng">◇</span>';
+            return '';
+        }
+
+        function flagBadgesHtml(flags) {
+            const colors = {
+                duplicate_char: '#f44336', cedict_mismatch: '#ff9800',
+                polyphone: '#2196F3', cedict_missing: '#999'
+            };
+            const labels = {
+                duplicate_char: 'DUP', cedict_mismatch: 'MISMATCH',
+                polyphone: 'POLY', cedict_missing: 'MISSING'
+            };
+            return flags.map(f =>
+                `<span style="font-size: 10px; padding: 1px 5px; border-radius: 8px; background: ${colors[f] || '#999'}; color: white;">${labels[f] || f}</span>`
+            ).join(' ');
+        }
 
         function loadCurationItems() {
             const filter = document.getElementById('curation-filter').value;
@@ -903,90 +925,99 @@ let quizEntries = [];
                 .then(r => r.json())
                 .then(data => {
                     const summary = data.summary;
-                    summaryEl.textContent = `${summary.total_flagged} flagged total · ${summary.reviewed} reviewed · ${summary.unreviewed} unreviewed`;
+                    summaryEl.textContent = `${summary.total_flagged_tones} flagged tones · ${summary.reviewed} reviewed · ${summary.unreviewed} unreviewed · ${summary.total_syllables} syllables`;
 
+                    let syllables = data.syllables || [];
                     // Client-side filtering
-                    let items = data.items;
                     if (filter === 'accepted') {
-                        items = items.filter(i => i.status === 'accepted');
+                        syllables = syllables.filter(s => s.tones.some(t => t.status === 'accepted'));
                     }
                     if (flagFilter !== 'any') {
-                        items = items.filter(i => i.flags.includes(flagFilter));
+                        syllables = syllables.filter(s => s.tones.some(t => t.flags.includes(flagFilter)));
                     }
 
-                    curationItems = items;
-                    renderCurationList(items);
+                    curationSyllables = syllables;
+                    renderCurationList(syllables);
                 })
                 .catch(err => {
                     summaryEl.textContent = 'Error: ' + err.message;
                 });
         }
 
-        function renderCurationList(items) {
+        function renderCurationList(syllables) {
             const listEl = document.getElementById('curation-list');
-            if (!items.length) {
+            if (!syllables.length) {
                 listEl.innerHTML = '<p style="padding: 15px; color: #666;">No items to review.</p>';
                 return;
             }
 
             let html = '';
-            items.forEach((item, idx) => {
-                const key = `${item.syllable}${item.tone}`;
-                const flagBadges = item.flags.map(f => {
-                    const colors = {
-                        duplicate_char: '#f44336',
-                        cedict_mismatch: '#ff9800',
-                        polyphone: '#2196F3',
-                        cedict_missing: '#999'
-                    };
-                    const labels = {
-                        duplicate_char: 'DUP',
-                        cedict_mismatch: 'MISMATCH',
-                        polyphone: 'POLY',
-                        cedict_missing: 'MISSING'
-                    };
-                    return `<span style="font-size: 11px; padding: 1px 6px; border-radius: 8px; background: ${colors[f] || '#999'}; color: white;">${labels[f] || f}</span>`;
-                }).join(' ');
+            syllables.forEach((syl, sIdx) => {
+                html += `<div class="curation-syllable" id="curation-syl-${sIdx}">
+                    <div class="curation-syllable-header"><strong>${syl.syllable}</strong></div>
+                    <div class="curation-tones-row">`;
 
-                const statusBadge = item.status === 'accepted'
-                    ? ' <span style="font-size: 11px; padding: 1px 6px; border-radius: 8px; background: #4CAF50; color: white;">OK</span>'
-                    : '';
+                syl.tones.forEach((t, tIdx) => {
+                    const id = `${sIdx}-${tIdx}`;
+                    const badges = t.flags.length ? `<div style="margin-top: 2px;">${flagBadgesHtml(t.flags)}</div>` : '';
 
-                const altsHtml = item.alternatives.length > 0
-                    ? `<div id="curation-alts-${idx}" style="display: none; margin-top: 8px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
-                        <strong style="font-size: 12px;">Alternatives:</strong>
-                        ${item.alternatives.map(alt =>
-                            `<div style="display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 13px;">
-                                <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${alt.char}')" title="Play">&#x1f50a;</button>
-                                <span class="chinese" style="font-size: 18px;">${alt.char}</span>
-                                <span style="color: #666;">${alt.definition}</span>
-                                ${alt.polyphone ? '<span style="font-size: 11px; padding: 1px 4px; border-radius: 6px; background: #2196F3; color: white;">POLY</span>' : ''}
-                                <button class="secondary" style="font-size: 12px; padding: 2px 8px; margin-left: auto;" onclick="event.stopPropagation(); replaceCurationChar('${item.syllable}', ${item.tone}, '${alt.char}', ${idx})">Use</button>
-                            </div>`
-                        ).join('')}
-                       </div>`
-                    : '';
+                    // Action buttons
+                    let actions = '';
+                    if (t.status === 'accepted') {
+                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'reset')">Reset</button>`;
+                    } else if (t.status === 'espeak') {
+                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'reset')">Reset</button>`;
+                    } else {
+                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'accept')">Accept</button>`;
+                        actions += `<button class="curation-action-btn" onclick="event.stopPropagation(); playEspeakPreview('${syl.syllable}', ${t.tone})" title="Preview espeak-ng">▶es</button>`;
+                        actions += `<button class="curation-action-btn curation-espeak-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'espeak')">Espeak</button>`;
+                    }
 
-                html += `<div id="curation-item-${idx}" style="padding: 10px 12px; border-bottom: 1px solid #eee;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${item.syllable}', ${item.tone})" title="Play current">&#x1f50a;</button>
-                        <strong style="font-size: 14px;">${key}</strong>
-                        <span class="chinese" style="font-size: 20px;">${item.current_char}</span>
-                        ${flagBadges}${statusBadge}
-                        <div style="margin-left: auto; display: flex; gap: 5px;">
-                            ${item.alternatives.length > 0 ? `<button class="secondary" style="font-size: 12px; padding: 2px 8px;" onclick="toggleCurationAlts(${idx})">Alts (${item.alternatives.length})</button>` : '<span style="font-size: 12px; color: #999;">no alts</span>'}
-                            <button class="secondary" style="font-size: 12px; padding: 2px 8px;" onclick="acceptCurationChar('${item.syllable}', ${item.tone}, ${idx})">${item.status === 'accepted' ? 'Reset' : 'Accept'}</button>
+                    // Alts toggle
+                    const altsCount = (t.alternatives || []).length;
+                    const altsToggle = altsCount > 0
+                        ? `<button class="curation-action-btn" onclick="event.stopPropagation(); toggleCurationAlts('${id}')">Alts(${altsCount})</button>`
+                        : '';
+
+                    // Alternatives panel
+                    let altsPanel = '';
+                    if (altsCount > 0) {
+                        altsPanel = `<div id="curation-alts-${id}" class="curation-alts-panel" style="display: none;">
+                            ${t.alternatives.map(alt =>
+                                `<div class="curation-alt-row">
+                                    <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${alt.char}')" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                                    <span class="chinese" style="font-size: 16px;">${alt.char}</span>
+                                    <span style="color: #666; font-size: 12px;">${alt.definition}</span>
+                                    ${alt.polyphone ? '<span style="font-size: 10px; padding: 1px 4px; border-radius: 6px; background: #2196F3; color: white;">POLY</span>' : ''}
+                                    <button class="curation-action-btn" style="margin-left: auto;" onclick="event.stopPropagation(); replaceCurationChar('${syl.syllable}', ${t.tone}, '${alt.char}')">Use</button>
+                                </div>`
+                            ).join('')}
+                        </div>`;
+                    }
+
+                    html += `<div class="curation-tone-cell">
+                        <div class="curation-tone-header">
+                            <span style="font-size: 12px; color: #999;">T${t.tone}</span>
+                            ${statusIndicator(t.status)}
                         </div>
-                    </div>
-                    ${altsHtml}
-                </div>`;
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${syl.syllable}', ${t.tone})" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                            <span class="chinese" style="font-size: 20px;">${t.char}</span>
+                        </div>
+                        ${badges}
+                        <div class="curation-tone-actions">${altsToggle}${actions}</div>
+                        ${altsPanel}
+                    </div>`;
+                });
+
+                html += `</div></div>`;
             });
 
             listEl.innerHTML = html;
         }
 
-        function toggleCurationAlts(idx) {
-            const el = document.getElementById(`curation-alts-${idx}`);
+        function toggleCurationAlts(id) {
+            const el = document.getElementById(`curation-alts-${id}`);
             if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
         }
 
@@ -1004,43 +1035,41 @@ let quizEntries = [];
                 .catch(err => console.error('Preview audio failed:', err));
         }
 
-        function acceptCurationChar(syllable, tone, idx) {
-            const item = curationItems[idx];
-            if (item.status === 'accepted') {
-                // Reset
+        function playEspeakPreview(syllable, tone) {
+            fetch(`/api/tone_audio_espeak_preview?pinyin=${encodeURIComponent(syllable)}&tone=${tone}`)
+                .then(r => r.blob())
+                .then(blob => { new Audio(URL.createObjectURL(blob)).play(); })
+                .catch(err => console.error('Espeak preview failed:', err));
+        }
+
+        function curationAction(syllable, tone, action) {
+            if (action === 'reset') {
                 fetch('/api/tone_curation/reset', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({syllable, tone})
                 })
                 .then(r => r.json())
-                .then(data => {
-                    if (data.success) loadCurationItems();
-                });
+                .then(data => { if (data.success) loadCurationItems(); });
             } else {
-                // Accept
                 fetch('/api/tone_curation/update', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({syllable, tone, action: 'accept'})
+                    body: JSON.stringify({syllable, tone, action})
                 })
                 .then(r => r.json())
-                .then(data => {
-                    if (data.success) loadCurationItems();
-                });
+                .then(data => { if (data.success) loadCurationItems(); });
             }
         }
 
-        function replaceCurationChar(syllable, tone, newChar, idx) {
+        function replaceCurationChar(syllable, tone, newChar) {
             fetch('/api/tone_curation/update', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({syllable, tone, action: 'replace', new_char: newChar})
             })
             .then(r => r.json())
-            .then(data => {
-                if (data.success) loadCurationItems();
-            });
+            .then(data => { if (data.success) loadCurationItems(); });
         }
 
         function editWord(index, english, pinyin, dictPinyin, pypinyinPinyin) {
@@ -1835,8 +1864,9 @@ let quizEntries = [];
             feedbackEl.textContent = '';
             feedbackEl.className = 'tone-practice-feedback';
 
-            // Hide controls until answered
+            // Hide controls and curate panel until answered
             document.getElementById('tone-practice-controls').style.display = 'none';
+            document.getElementById('tone-curate-panel').style.display = 'none';
 
             // Update score
             updateTonePracticeScore();
@@ -1997,6 +2027,134 @@ let quizEntries = [];
                     new Audio(url).play();
                 })
                 .catch(err => console.error('Reference audio failed:', err));
+        }
+
+        // ===== TONE PRACTICE CURATE PANEL =====
+
+        function showToneCurate() {
+            if (!tonePracticeState.current) return;
+
+            const syllable = tonePracticeState.current.syllable;
+            const panelEl = document.getElementById('tone-curate-panel');
+
+            // Toggle off if already showing for same syllable
+            if (panelEl.style.display === 'block' && panelEl.dataset.syllable === syllable) {
+                panelEl.style.display = 'none';
+                return;
+            }
+
+            panelEl.dataset.syllable = syllable;
+            panelEl.innerHTML = '<p style="color: #666; font-size: 13px;">Loading...</p>';
+            panelEl.style.display = 'block';
+
+            loadToneCuratePanel(syllable);
+        }
+
+        function loadToneCuratePanel(syllable) {
+            fetch(`/api/tone_curation/status?syllable=${encodeURIComponent(syllable)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        document.getElementById('tone-curate-panel').innerHTML = `<p style="color: #c00;">${data.error}</p>`;
+                        return;
+                    }
+                    renderToneCuratePanel(data);
+                })
+                .catch(err => {
+                    document.getElementById('tone-curate-panel').innerHTML = `<p style="color: #c00;">Error: ${err.message}</p>`;
+                });
+        }
+
+        function renderToneCuratePanel(data) {
+            const panelEl = document.getElementById('tone-curate-panel');
+            const currentTone = tonePracticeState.current?.tone;
+
+            let html = `<div class="curate-panel-header">Curate: <strong>${data.syllable}</strong></div>`;
+            html += '<div class="curate-panel-tones">';
+
+            data.tones.forEach((t, idx) => {
+                const isCurrent = t.tone === currentTone;
+                const highlight = isCurrent ? ' curate-tone-current' : '';
+
+                // Action buttons
+                let actions = '';
+                if (t.status === 'accepted' || t.status === 'espeak') {
+                    actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); toneCurateAction('${data.syllable}', ${t.tone}, 'reset')">Reset</button>`;
+                } else {
+                    actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); toneCurateAction('${data.syllable}', ${t.tone}, 'accept')">Accept</button>`;
+                    actions += `<button class="curation-action-btn" onclick="event.stopPropagation(); playEspeakPreview('${data.syllable}', ${t.tone})" title="Preview espeak-ng">▶es</button>`;
+                    actions += `<button class="curation-action-btn curation-espeak-btn" onclick="event.stopPropagation(); toneCurateAction('${data.syllable}', ${t.tone}, 'espeak')">Espeak</button>`;
+                }
+
+                const altsCount = (t.alternatives || []).length;
+                const altsToggle = altsCount > 0
+                    ? `<button class="curation-action-btn" onclick="event.stopPropagation(); toggleCurationAlts('tc-${idx}')">Alts(${altsCount})</button>`
+                    : '';
+
+                let altsPanel = '';
+                if (altsCount > 0) {
+                    altsPanel = `<div id="curation-alts-tc-${idx}" class="curation-alts-panel" style="display: none;">
+                        ${t.alternatives.map(alt =>
+                            `<div class="curation-alt-row">
+                                <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${alt.char}')" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                                <span class="chinese" style="font-size: 16px;">${alt.char}</span>
+                                <span style="color: #666; font-size: 12px;">${alt.definition}</span>
+                                ${alt.polyphone ? '<span style="font-size: 10px; padding: 1px 4px; border-radius: 6px; background: #2196F3; color: white;">POLY</span>' : ''}
+                                <button class="curation-action-btn" style="margin-left: auto;" onclick="event.stopPropagation(); toneCurateReplace('${data.syllable}', ${t.tone}, '${alt.char}')">Use</button>
+                            </div>`
+                        ).join('')}
+                    </div>`;
+                }
+
+                const badges = t.flags.length ? `<div style="margin-top: 2px;">${flagBadgesHtml(t.flags)}</div>` : '';
+
+                html += `<div class="curation-tone-cell${highlight}">
+                    <div class="curation-tone-header">
+                        <span style="font-size: 12px; color: #999;">T${t.tone}</span>
+                        ${statusIndicator(t.status)}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${data.syllable}', ${t.tone})" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                        <span class="chinese" style="font-size: 20px;">${t.char}</span>
+                    </div>
+                    ${badges}
+                    <div class="curation-tone-actions">${altsToggle}${actions}</div>
+                    ${altsPanel}
+                </div>`;
+            });
+
+            html += '</div>';
+            panelEl.innerHTML = html;
+        }
+
+        function toneCurateAction(syllable, tone, action) {
+            if (action === 'reset') {
+                fetch('/api/tone_curation/reset', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({syllable, tone})
+                })
+                .then(r => r.json())
+                .then(data => { if (data.success) loadToneCuratePanel(syllable); });
+            } else {
+                fetch('/api/tone_curation/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({syllable, tone, action})
+                })
+                .then(r => r.json())
+                .then(data => { if (data.success) loadToneCuratePanel(syllable); });
+            }
+        }
+
+        function toneCurateReplace(syllable, tone, newChar) {
+            fetch('/api/tone_curation/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({syllable, tone, action: 'replace', new_char: newChar})
+            })
+            .then(r => r.json())
+            .then(data => { if (data.success) loadToneCuratePanel(syllable); });
         }
 
         // ===== IMPORT =====

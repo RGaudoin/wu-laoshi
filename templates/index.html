@@ -102,12 +102,37 @@
         <div id="learn-tones" class="tab-content">
             <!-- Tones sub-tabs -->
             <div class="tabs sub-tabs">
-                <button class="tab active" onclick="showTonesSubTab('chart')">Chart</button>
-                <button class="tab" onclick="showTonesSubTab('practice')">Practice</button>
+                <button class="tab active" onclick="showTonesSubTab('resources')">Resources</button>
+                <button class="tab" onclick="showTonesSubTab('chart')">Chart (WIP)</button>
+                <button class="tab" onclick="showTonesSubTab('practice')">Practice (WIP)</button>
+            </div>
+
+            <!-- RESOURCES SUB-TAB -->
+            <div id="tones-resources" class="tones-subtab active">
+                <div style="padding: 20px 0;">
+                    <h3 style="margin-top: 0;">Pinyin Charts</h3>
+                    <p style="color: #666;">Interactive charts for learning Mandarin tones and pronunciation:</p>
+                    <ul style="list-style: none; padding: 0; margin: 20px 0;">
+                        <li style="margin-bottom: 15px;">
+                            <a href="https://www.digmandarin.com/chinese-pinyin-chart" target="_blank" rel="noopener" style="font-size: 16px;">
+                                📊 DigMandarin Pinyin Chart
+                            </a>
+                            <p style="color: #888; margin: 5px 0 0 24px; font-size: 14px;">Comprehensive chart with audio for all syllable+tone combinations</p>
+                        </li>
+                        <li style="margin-bottom: 15px;">
+                            <a href="https://yoyochinese.com/chinese-learning-tools/Mandarin-Chinese-pronunciation-lesson/pinyin-chart-table" target="_blank" rel="noopener" style="font-size: 16px;">
+                                📊 Yoyo Chinese Pinyin Chart
+                            </a>
+                            <p style="color: #888; margin: 5px 0 0 24px; font-size: 14px;">Clear layout with video pronunciation guides</p>
+                        </li>
+                    </ul>
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 25px 0;">
+                    <p style="color: #999; font-size: 13px;">The Chart and Practice tabs above are work-in-progress local alternatives.</p>
+                </div>
             </div>
 
             <!-- CHART SUB-TAB -->
-            <div id="tones-chart" class="tones-subtab active">
+            <div id="tones-chart" class="tones-subtab">
                 <div style="margin-bottom: 15px;">
                     <p style="color: #666; margin: 0;">Click any syllable to hear all 4 tones. The grid shows valid Mandarin pinyin combinations.</p>
                 </div>
@@ -183,8 +208,10 @@
                     <div id="tone-practice-controls" class="tone-practice-controls" style="display: none;">
                         <button class="secondary" onclick="playTonePracticeAudio()">🔊 Replay</button>
                         <button class="secondary" onclick="showToneReference()">📖 Reference</button>
+                        <button class="secondary" onclick="showToneCurate()">🔧 Curate</button>
                         <button onclick="nextTonePractice()">Next →</button>
                     </div>
+                    <div id="tone-curate-panel" class="tone-curate-panel" style="display: none;"></div>
                     <div id="tone-practice-score" class="score"></div>
                 </div>
 

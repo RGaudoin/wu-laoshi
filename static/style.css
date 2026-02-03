@@ -96,7 +96,7 @@ h1 { color: #333; text-align: center; margin-bottom: 10px; }
     background: white;
     padding: 30px;
     border-radius: 10px;
-    max-width: 500px;
+    max-width: 700px;
     width: 90%;
     max-height: 80vh;
     overflow-y: auto;
@@ -532,6 +532,100 @@ select {
 .tone-reference-btn.highlight {
     background: #fff3e0;
     border-color: #FF9800;
+}
+
+/* Curation status indicators */
+.curation-status { font-size: 14px; }
+.curation-ok { color: #4CAF50; }
+.curation-flagged { color: #FF9800; }
+.curation-espeak { color: #999; border: 1px dashed #999; border-radius: 50%; padding: 0 3px; font-size: 12px; }
+
+/* Curation grouped layout */
+.curation-syllable {
+    border-bottom: 1px solid #ddd;
+    padding: 8px 10px;
+}
+.curation-syllable-header {
+    font-size: 15px;
+    margin-bottom: 6px;
+}
+.curation-tones-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.curation-tone-cell {
+    padding: 6px;
+    background: #f9f9f9;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 13px;
+}
+.curation-tone-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+.curation-tone-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    justify-content: center;
+    margin-top: 4px;
+}
+.curation-action-btn {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: #e0e0e0;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.curation-action-btn:hover { background: #d0d0d0; }
+.curation-espeak-btn { background: #fff3e0; color: #e65100; }
+.curation-espeak-btn:hover { background: #ffe0b2; }
+
+.curation-alts-panel {
+    margin-top: 6px;
+    padding: 6px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    text-align: left;
+}
+.curation-alt-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+    font-size: 12px;
+}
+
+/* Tone practice curate panel */
+.tone-curate-panel {
+    margin-top: 15px;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    text-align: left;
+}
+.curate-panel-header {
+    font-size: 14px;
+    margin-bottom: 10px;
+    color: #333;
+}
+.curate-panel-tones {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+}
+.curate-tone-current {
+    background: #fff8e1 !important;
+    border: 1px solid #FFD54F;
 }
 
 /* Import */

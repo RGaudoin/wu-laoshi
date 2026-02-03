@@ -787,53 +787,91 @@ def _analyse_tone_entry(syllable, tone, char, all_chars_for_syllable):
     return flags
 
 
+def _get_tone_status(syllable, tone, char, chars_list, reviewed):
+    """Get status and flags for a single syllable+tone entry."""
+    key = f"{syllable}{tone}"
+    flags = _analyse_tone_entry(syllable, tone, char, chars_list)
+    review_state = reviewed.get(key)
+
+    if review_state == 'accepted':
+        status = 'accepted'
+    elif review_state == 'espeak':
+        status = 'espeak'
+    elif flags:
+        status = 'flagged'
+    else:
+        status = 'unflagged'
+
+    has_mp3 = os.path.exists(os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3"))
+
+    return {
+        'tone': tone,
+        'char': char,
+        'flags': flags,
+        'status': status,
+        'has_mp3': has_mp3
+    }
+
+
 @app.route('/api/tone_curation/analyse')
 def api_tone_curation_analyse():
-    """Analyse pinyin_tones.json for suspect mappings and suggest alternatives."""
+    """Analyse pinyin_tones.json grouped by syllable, all 4 tones per entry."""
     include_reviewed = request.args.get('include_reviewed', 'false') == 'true'
     reviewed = _load_tone_reviewed()
 
-    items = []
-    total_flagged = 0
+    syllables_data = []
+    total_flagged_tones = 0
     total_reviewed = 0
     total_unreviewed = 0
 
     for syllable, chars_list in PINYIN_TONE_CHARS.items():
+        tones_data = []
+        has_flagged = False
+        has_unreviewed = False
+        all_accepted = True
+
         for tone in range(1, 5):
             char = chars_list[tone - 1]
-            key = f"{syllable}{tone}"
+            info = _get_tone_status(syllable, tone, char, chars_list, reviewed)
 
-            flags = _analyse_tone_entry(syllable, tone, char, chars_list)
-            if not flags:
-                continue
+            if info['flags']:
+                total_flagged_tones += 1
+                has_flagged = True
+                if info['status'] == 'accepted':
+                    total_reviewed += 1
+                elif info['status'] != 'espeak':
+                    total_unreviewed += 1
+                    has_unreviewed = True
 
-            total_flagged += 1
-            status = reviewed.get(key, 'flagged')
+            if info['status'] not in ('accepted', 'unflagged'):
+                all_accepted = False
 
-            if status == 'accepted':
-                total_reviewed += 1
-                if not include_reviewed:
-                    continue
+            # Fetch alternatives for flagged/espeak tones
+            if info['flags'] or info['status'] == 'espeak':
+                alternatives = _find_cedict_single_chars(syllable, tone)
+                alternatives = [a for a in alternatives if a['char'] != char]
+                info['alternatives'] = alternatives[:8]
             else:
-                total_unreviewed += 1
+                info['alternatives'] = []
 
-            alternatives = _find_cedict_single_chars(syllable, tone)
-            # Remove current char from alternatives
-            alternatives = [a for a in alternatives if a['char'] != char]
+            tones_data.append(info)
 
-            items.append({
-                'syllable': syllable,
-                'tone': tone,
-                'current_char': char,
-                'flags': flags,
-                'status': status,
-                'alternatives': alternatives[:8]
-            })
+        # Filter: only include syllables matching criteria
+        if not has_flagged:
+            continue  # No flags at all — nothing to curate
+        if not include_reviewed and not has_unreviewed:
+            continue  # All flagged tones already reviewed — skip unless showing reviewed
+
+        syllables_data.append({
+            'syllable': syllable,
+            'tones': tones_data
+        })
 
     return jsonify({
-        'items': items,
+        'syllables': syllables_data,
         'summary': {
-            'total_flagged': total_flagged,
+            'total_syllables': len(syllables_data),
+            'total_flagged_tones': total_flagged_tones,
             'reviewed': total_reviewed,
             'unreviewed': total_unreviewed
         }
@@ -848,7 +886,7 @@ def api_tone_curation_update():
     tone = data.get('tone', 0)
     action = data.get('action', '')
 
-    if not syllable or tone < 1 or tone > 4 or action not in ('accept', 'replace'):
+    if not syllable or tone < 1 or tone > 4 or action not in ('accept', 'replace', 'espeak'):
         return jsonify({'success': False, 'error': 'Invalid parameters'}), 400
 
     key = f"{syllable}{tone}"
@@ -883,6 +921,16 @@ def api_tone_curation_update():
             'audio_error': error
         })
 
+    elif action == 'espeak':
+        # Delete pre-generated MP3 so /api/tone_audio falls back to espeak-ng
+        mp3_path = os.path.join(TONE_AUDIO_DIR, f"{syllable}{tone}.mp3")
+        if os.path.exists(mp3_path):
+            os.remove(mp3_path)
+
+        reviewed[key] = 'espeak'
+        _save_tone_reviewed(reviewed)
+        return jsonify({'success': True, 'action': 'espeak'})
+
 
 @app.route('/api/tone_curation/reset', methods=['POST'])
 def api_tone_curation_reset():
@@ -903,6 +951,81 @@ def api_tone_curation_reset():
     reviewed.pop(key, None)
     _save_tone_reviewed(reviewed)
     return jsonify({'success': True, 'reset': key})
+
+
+@app.route('/api/tone_curation/status')
+def api_tone_curation_status():
+    """Get curation status for all 4 tones of a syllable."""
+    syllable = request.args.get('syllable', '').strip().lower()
+    if not syllable or syllable not in PINYIN_TONE_CHARS:
+        return jsonify({'error': 'Invalid syllable'}), 400
+
+    chars_list = PINYIN_TONE_CHARS[syllable]
+    reviewed = _load_tone_reviewed()
+
+    tones = []
+    for tone in range(1, 5):
+        char = chars_list[tone - 1]
+        info = _get_tone_status(syllable, tone, char, chars_list, reviewed)
+
+        # Include alternatives for actionable tones
+        if info['flags'] or info['status'] == 'espeak':
+            alternatives = _find_cedict_single_chars(syllable, tone)
+            alternatives = [a for a in alternatives if a['char'] != char]
+            info['alternatives'] = alternatives[:8]
+        else:
+            info['alternatives'] = []
+
+        tones.append(info)
+
+    return jsonify({
+        'syllable': syllable,
+        'tones': tones
+    })
+
+
+@app.route('/api/tone_audio_espeak_preview')
+def api_tone_audio_espeak_preview():
+    """Generate on-the-fly espeak-ng audio for a pinyin+tone (not saved to disk)."""
+    from flask import send_file
+    from io import BytesIO
+    import subprocess
+    import tempfile
+
+    pinyin = request.args.get('pinyin', '').strip().lower()
+    tone = request.args.get('tone', '1')
+    try:
+        tone = int(tone)
+    except ValueError:
+        tone = 1
+
+    if not pinyin:
+        return '', 400
+
+    pinyin_ascii = pinyin.replace('ü', 'v')
+    pinyin_with_tone = f"{pinyin_ascii}{tone}"
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        result = subprocess.run(
+            ['espeak-ng', '-v', 'cmn-latn-pinyin', '-s', '90', '-g', '10', '-w', tmp_path, pinyin_with_tone],
+            capture_output=True, text=True
+        )
+
+        if result.returncode != 0:
+            return '', 500
+
+        with open(tmp_path, 'rb') as f:
+            wav_data = BytesIO(f.read())
+
+        os.unlink(tmp_path)
+        wav_data.seek(0)
+        return send_file(wav_data, mimetype='audio/wav')
+    except Exception as e:
+        print(f"Espeak preview error for {pinyin}{tone}: {e}")
+        return '', 500
 
 
 @app.route('/api/tone_audio_preview')
