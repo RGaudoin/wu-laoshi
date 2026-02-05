@@ -73,6 +73,7 @@ let quizEntries = [];
         function normalizeEnglish(s) {
             return s.toLowerCase()
                     .replace(/^to\s+/, '')  // strip "to " prefix
+                    .replace(/^(the|a|an)\s+/i, '')  // strip articles (no articles in Mandarin)
                     .replace(/\([^)]*\)/g, '') // remove (bracketed content)
                     .replace(/\[[^\]]*\]/g, '') // remove [bracketed content]
                     .trim();
@@ -815,7 +816,10 @@ let quizEntries = [];
             const correct = Math.min(quizSettings.maxCount, stats?.correct || 0);
             const wrong = Math.min(quizSettings.maxCount, stats?.wrong || 0);
             const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
-            return Math.max(0.1, weight);
+            // New words (0 attempts) get a boost to ensure they're introduced
+            const attempts = (stats?.correct || 0) + (stats?.wrong || 0);
+            const newnessBoost = attempts === 0 ? 0.5 : 0;
+            return Math.max(0.1, weight + newnessBoost);
         }
 
         function refreshList(loadMore = false) {
@@ -1277,7 +1281,20 @@ let quizEntries = [];
             const correct = Math.min(quizSettings.maxCount, stats?.correct || 0);
             const wrong = Math.min(quizSettings.maxCount, stats?.wrong || 0);
             const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
-            return Math.max(0.1, weight);  // Floor at 0.1
+            // New words (0 attempts) get a boost to ensure they're introduced
+            const attempts = (stats?.correct || 0) + (stats?.wrong || 0);
+            const newnessBoost = attempts === 0 ? 0.5 : 0;
+            return Math.max(0.1, weight + newnessBoost);  // Floor at 0.1
+        }
+
+        // Fisher-Yates shuffle for uniform random ordering
+        function shuffle(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
         }
 
         // Weighted random selection
@@ -1341,7 +1358,7 @@ let quizEntries = [];
                     // Apply ordering based on selection
                     const order = document.getElementById('quiz-order').value;
                     if (order === 'random') {
-                        quizEntries = entriesWithIndex.sort(() => Math.random() - 0.5);
+                        quizEntries = shuffle(entriesWithIndex);
                     } else if (order === 'weighted') {
                         quizEntries = weightedShuffle(entriesWithIndex, useCharStats);
                     } else {
