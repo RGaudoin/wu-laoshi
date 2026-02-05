@@ -831,8 +831,8 @@ let quizEntries = [];
                 .then(r => r.json())
                 .then(data => {
                     let html = '';
-                    data.vocab.forEach((v, i) => {
-                        const idx = data.offset + i;
+                    data.vocab.forEach(v => {
+                        const idx = v._index;  // Use original vocab index from backend
                         let pinyinDisplay = v.pinyin || '';
                         // Store raw pinyin options for editing
                         const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
@@ -1339,8 +1339,8 @@ let quizEntries = [];
                         return;
                     }
 
-                    // Add original index to each entry for stats tracking
-                    let entriesWithIndex = data.vocab.map((v, i) => ({...v, _index: i}));
+                    // Entries already have _index from backend (original vocab position)
+                    let entriesWithIndex = data.vocab;
 
                     // Filter by focus if checked
                     const focusOnly = document.getElementById('quiz-focus-only').checked;

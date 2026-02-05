@@ -330,14 +330,18 @@ def api_list():
     tag_filter = request.args.get('tag', '')  # Optional tag filter
     vocab = load_vocab()
 
+    # Add original index BEFORE any filtering (for correct stats updates)
+    vocab_with_index = [(i, v) for i, v in enumerate(vocab)]
+
     # Filter by tag if specified
     if tag_filter:
-        vocab = [v for v in vocab if tag_filter in v.get('tags', [])]
+        vocab_with_index = [(i, v) for i, v in vocab_with_index if tag_filter in v.get('tags', [])]
 
-    # Add pypinyin comparison for each entry
+    # Add pypinyin comparison and original index for each entry
     vocab_with_pypinyin = []
-    for entry in vocab:
+    for orig_idx, entry in vocab_with_index:
         v = dict(entry)
+        v['_index'] = orig_idx  # Original index in vocabulary for stats updates
         chars = entry.get('characters')
         if chars:
             pypinyin_ver = chars_to_pinyin(chars)
