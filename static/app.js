@@ -7,6 +7,7 @@ let quizEntries = [];
         let quizTotal = 0;
         let currentEntry = null;
         let currentAudio = null;
+        let lastAnswerStats = null;  // For override feature: stores {index, originalStats, statType}
 
         // Tone mappings: toned vowel → [base vowel, tone number]
         const tonedVowels = {
@@ -115,12 +116,12 @@ let quizEntries = [];
             // Exact match on any keyword (for particles especially)
             if (isParticle && keywords.includes(normAnswer)) return true;
 
-            // Fuzzy match (80% similarity threshold)
+            // Fuzzy match (configurable similarity threshold)
             for (const part of parts) {
                 if (part.length >= 3) {
                     const dist = levenshtein(normAnswer, part);
                     const similarity = 1 - dist / Math.max(normAnswer.length, part.length);
-                    if (similarity >= 0.8) return true;
+                    if (similarity >= quizSettings.fuzzyThreshold) return true;
                 }
             }
 
@@ -184,7 +185,8 @@ let quizEntries = [];
             wrongWeight: 1.0,
             correctWeight: 0.5,
             maxCount: 20,
-            decay: 1
+            decay: 1,
+            fuzzyThreshold: 0.8
         };
 
         function loadSettings() {
@@ -200,6 +202,7 @@ let quizEntries = [];
                     document.getElementById('setting-correct-weight').value = quizSettings.correctWeight;
                     document.getElementById('setting-max-count').value = quizSettings.maxCount;
                     document.getElementById('setting-decay').value = quizSettings.decay;
+                    document.getElementById('setting-fuzzy-threshold').value = quizSettings.fuzzyThreshold;
 
                     // API key status
                     const apiKeyInput = document.getElementById('api-key');
@@ -244,7 +247,8 @@ let quizEntries = [];
                 wrongWeight: parseFloat(document.getElementById('setting-wrong-weight').value) || 1.0,
                 correctWeight: parseFloat(document.getElementById('setting-correct-weight').value) || 0.5,
                 maxCount: parseInt(document.getElementById('setting-max-count').value) || 20,
-                decay: parseInt(document.getElementById('setting-decay').value) || 1
+                decay: parseInt(document.getElementById('setting-decay').value) || 1,
+                fuzzyThreshold: parseFloat(document.getElementById('setting-fuzzy-threshold').value) || 0.8
             };
 
             const payload = {quiz: quizSettings};
@@ -1503,6 +1507,58 @@ let quizEntries = [];
             });
         }
 
+        function quizOverride(markCorrect) {
+            if (!lastAnswerStats) return;
+            // Prevent overriding to same state
+            if (markCorrect === lastAnswerStats.wasCorrect) return;
+
+            // Send override to backend - apply correct/wrong from original stats
+            fetch('/api/update_stats', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    index: lastAnswerStats.index,
+                    correct: markCorrect,
+                    maxCount: quizSettings.maxCount,
+                    decay: quizSettings.decay,
+                    statType: lastAnswerStats.statType,
+                    override: lastAnswerStats.originalStats  // Backend will use these as base
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    // Update score display
+                    if (markCorrect) {
+                        quizCorrect++;
+                    } else {
+                        quizCorrect--;
+                    }
+                    document.getElementById('quiz-score').textContent = 'Score: ' + quizCorrect + '/' + quizTotal;
+
+                    // Update feedback display
+                    const feedback = document.getElementById('quiz-feedback');
+                    const newStatsStr = `[✓${data.newStats.correct} ✗${data.newStats.wrong} w:${calcWeight(data.newStats).toFixed(2)}]`;
+
+                    if (markCorrect) {
+                        feedback.className = 'quiz-feedback correct';
+                        feedback.innerHTML = feedback.innerHTML
+                            .replace('✗ Wrong.', '✓ Overridden to Correct!')
+                            .replace(/\[.*?✓\d+ ✗\d+ w:[\d.]+\]/, newStatsStr)
+                            .replace(/<button[^>]*>✓ Mark Correct<\/button>/, '<span style="color: #999; font-size: 12px;">(overridden)</span>');
+                    } else {
+                        feedback.className = 'quiz-feedback wrong';
+                        feedback.innerHTML = feedback.innerHTML
+                            .replace('✓ Correct!', '✗ Overridden to Wrong.')
+                            .replace(/\[.*?✓\d+ ✗\d+ w:[\d.]+\]/, newStatsStr)
+                            .replace(/<button[^>]*>✗ Mark Wrong<\/button>/, '<span style="color: #999; font-size: 12px;">(overridden)</span>');
+                    }
+
+                    lastAnswerStats.wasCorrect = markCorrect;  // Prevent double override
+                }
+            });
+        }
+
         function checkAnswer() {
             if (!currentEntry) return;
 
@@ -1588,6 +1644,14 @@ let quizEntries = [];
             const useCharStats = quizUsesCharacters();
             const currentStats = useCharStats ? currentEntry.char_stats : currentEntry.stats;
 
+            // Save original stats for potential override
+            lastAnswerStats = {
+                index: currentEntry._index,
+                originalStats: {correct: currentStats?.correct || 0, wrong: currentStats?.wrong || 0},
+                statType: useCharStats ? 'char_stats' : 'stats',
+                wasCorrect: correct
+            };
+
             // Stats display (show what they'll be AFTER this answer)
             let newCorrect = currentStats?.correct || 0;
             let newWrong = currentStats?.wrong || 0;
@@ -1608,6 +1672,11 @@ let quizEntries = [];
                 <button class="danger" onclick="quizDeleteEntry()" style="padding: 2px 8px; font-size: 12px;">Delete</button>
             </span>`;
 
+            // Override button - to fix false positives/negatives (typos, fuzzy match errors)
+            const overrideBtn = correct
+                ? `<button class="danger" onclick="quizOverride(false)" style="padding: 2px 8px; font-size: 12px; margin-left: 10px;">✗ Mark Wrong</button>`
+                : `<button class="secondary" onclick="quizOverride(true)" style="padding: 2px 8px; font-size: 12px; margin-left: 10px;">✓ Mark Correct</button>`;
+
             // Show audio button after answering (was hidden in English mode)
             if (currentAudio) {
                 document.getElementById('quiz-play-audio').style.display = 'inline-block';
@@ -1616,10 +1685,10 @@ let quizEntries = [];
             const yourAnswer = `<span style="font-size: 13px; color: ${correct ? '#666' : '#c00'};"> (you said: "${answer}")</span>`;
             if (correct) {
                 quizCorrect++;
-                feedback.innerHTML = '✓ Correct!' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
+                feedback.innerHTML = '✓ Correct!' + yourAnswer + ' ' + entryInfo + statsInfo + overrideBtn + editBtns;
                 feedback.className = 'quiz-feedback correct';
             } else {
-                feedback.innerHTML = '✗ Wrong.' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
+                feedback.innerHTML = '✗ Wrong.' + yourAnswer + ' ' + entryInfo + statsInfo + overrideBtn + editBtns;
                 feedback.className = 'quiz-feedback wrong';
                 if (currentEntry.audio) playAudio(currentEntry.audio);
             }

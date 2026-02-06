@@ -493,6 +493,7 @@ def api_update_stats():
     max_count = data.get('maxCount', 20)
     decay = data.get('decay', 1)
     stat_type = data.get('statType', 'stats')  # 'stats' or 'char_stats'
+    override = data.get('override')  # Optional: {correct: n, wrong: n} to use as base instead of current
 
     # Validate stat_type
     if stat_type not in ('stats', 'char_stats'):
@@ -507,16 +508,24 @@ def api_update_stats():
     if stat_type not in entry:
         entry[stat_type] = {'correct': 0, 'wrong': 0}
 
+    # Use override values as base if provided (for correcting false positives)
+    if override:
+        base_correct = override.get('correct', 0)
+        base_wrong = override.get('wrong', 0)
+    else:
+        base_correct = entry[stat_type]['correct']
+        base_wrong = entry[stat_type]['wrong']
+
     # Update stats (capped at max_count, answers decay the opposite count)
     if correct:
-        entry[stat_type]['correct'] = min(max_count, entry[stat_type]['correct'] + 1)
-        entry[stat_type]['wrong'] = max(0, entry[stat_type]['wrong'] - decay)
+        entry[stat_type]['correct'] = min(max_count, base_correct + 1)
+        entry[stat_type]['wrong'] = max(0, base_wrong - decay)
     else:
-        entry[stat_type]['wrong'] = min(max_count, entry[stat_type]['wrong'] + 1)
-        entry[stat_type]['correct'] = max(0, entry[stat_type]['correct'] - decay)
+        entry[stat_type]['wrong'] = min(max_count, base_wrong + 1)
+        entry[stat_type]['correct'] = max(0, base_correct - decay)
 
     save_vocab(vocab)
-    return jsonify({'success': True, 'stats': entry[stat_type], 'statType': stat_type})
+    return jsonify({'success': True, 'newStats': entry[stat_type], 'statType': stat_type})
 
 
 @app.route('/api/reset_stats', methods=['POST'])
