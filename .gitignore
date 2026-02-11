@@ -14,6 +14,10 @@ data/backup/
 data/import/
 audio/
 
+# Claude Code (keep skills tracked)
+.claude/*
+!.claude/skills/
+
 # IDE
 .idea/
 .vscode/

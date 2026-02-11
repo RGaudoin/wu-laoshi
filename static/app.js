@@ -7,6 +7,7 @@ let quizEntries = [];
         let quizTotal = 0;
         let currentEntry = null;
         let currentAudio = null;
+        let lastAnswerStats = null;  // For override feature: stores {index, originalStats, statType}
 
         // Tone mappings: toned vowel → [base vowel, tone number]
         const tonedVowels = {
@@ -73,6 +74,7 @@ let quizEntries = [];
         function normalizeEnglish(s) {
             return s.toLowerCase()
                     .replace(/^to\s+/, '')  // strip "to " prefix
+                    .replace(/^(the|a|an)\s+/i, '')  // strip articles (no articles in Mandarin)
                     .replace(/\([^)]*\)/g, '') // remove (bracketed content)
                     .replace(/\[[^\]]*\]/g, '') // remove [bracketed content]
                     .trim();
@@ -114,12 +116,12 @@ let quizEntries = [];
             // Exact match on any keyword (for particles especially)
             if (isParticle && keywords.includes(normAnswer)) return true;
 
-            // Fuzzy match (80% similarity threshold)
+            // Fuzzy match (configurable similarity threshold)
             for (const part of parts) {
                 if (part.length >= 3) {
                     const dist = levenshtein(normAnswer, part);
                     const similarity = 1 - dist / Math.max(normAnswer.length, part.length);
-                    if (similarity >= 0.8) return true;
+                    if (similarity >= quizSettings.fuzzyThreshold) return true;
                 }
             }
 
@@ -183,7 +185,8 @@ let quizEntries = [];
             wrongWeight: 1.0,
             correctWeight: 0.5,
             maxCount: 20,
-            decay: 1
+            decay: 1,
+            fuzzyThreshold: 0.8
         };
 
         function loadSettings() {
@@ -199,6 +202,7 @@ let quizEntries = [];
                     document.getElementById('setting-correct-weight').value = quizSettings.correctWeight;
                     document.getElementById('setting-max-count').value = quizSettings.maxCount;
                     document.getElementById('setting-decay').value = quizSettings.decay;
+                    document.getElementById('setting-fuzzy-threshold').value = quizSettings.fuzzyThreshold;
 
                     // API key status
                     const apiKeyInput = document.getElementById('api-key');
@@ -243,7 +247,8 @@ let quizEntries = [];
                 wrongWeight: parseFloat(document.getElementById('setting-wrong-weight').value) || 1.0,
                 correctWeight: parseFloat(document.getElementById('setting-correct-weight').value) || 0.5,
                 maxCount: parseInt(document.getElementById('setting-max-count').value) || 20,
-                decay: parseInt(document.getElementById('setting-decay').value) || 1
+                decay: parseInt(document.getElementById('setting-decay').value) || 1,
+                fuzzyThreshold: parseFloat(document.getElementById('setting-fuzzy-threshold').value) || 0.8
             };
 
             const payload = {quiz: quizSettings};
@@ -815,7 +820,10 @@ let quizEntries = [];
             const correct = Math.min(quizSettings.maxCount, stats?.correct || 0);
             const wrong = Math.min(quizSettings.maxCount, stats?.wrong || 0);
             const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
-            return Math.max(0.1, weight);
+            // New words (0 attempts) get a boost to ensure they're introduced
+            const attempts = (stats?.correct || 0) + (stats?.wrong || 0);
+            const newnessBoost = attempts === 0 ? 0.5 : 0;
+            return Math.max(0.1, weight + newnessBoost);
         }
 
         function refreshList(loadMore = false) {
@@ -827,8 +835,8 @@ let quizEntries = [];
                 .then(r => r.json())
                 .then(data => {
                     let html = '';
-                    data.vocab.forEach((v, i) => {
-                        const idx = data.offset + i;
+                    data.vocab.forEach(v => {
+                        const idx = v._index;  // Use original vocab index from backend
                         let pinyinDisplay = v.pinyin || '';
                         // Store raw pinyin options for editing
                         const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
@@ -1277,7 +1285,20 @@ let quizEntries = [];
             const correct = Math.min(quizSettings.maxCount, stats?.correct || 0);
             const wrong = Math.min(quizSettings.maxCount, stats?.wrong || 0);
             const weight = 1 + quizSettings.wrongWeight * Math.log(1 + wrong) - quizSettings.correctWeight * Math.log(1 + correct);
-            return Math.max(0.1, weight);  // Floor at 0.1
+            // New words (0 attempts) get a boost to ensure they're introduced
+            const attempts = (stats?.correct || 0) + (stats?.wrong || 0);
+            const newnessBoost = attempts === 0 ? 0.5 : 0;
+            return Math.max(0.1, weight + newnessBoost);  // Floor at 0.1
+        }
+
+        // Fisher-Yates shuffle for uniform random ordering
+        function shuffle(array) {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
         }
 
         // Weighted random selection
@@ -1322,8 +1343,8 @@ let quizEntries = [];
                         return;
                     }
 
-                    // Add original index to each entry for stats tracking
-                    let entriesWithIndex = data.vocab.map((v, i) => ({...v, _index: i}));
+                    // Entries already have _index from backend (original vocab position)
+                    let entriesWithIndex = data.vocab;
 
                     // Filter by focus if checked
                     const focusOnly = document.getElementById('quiz-focus-only').checked;
@@ -1341,7 +1362,7 @@ let quizEntries = [];
                     // Apply ordering based on selection
                     const order = document.getElementById('quiz-order').value;
                     if (order === 'random') {
-                        quizEntries = entriesWithIndex.sort(() => Math.random() - 0.5);
+                        quizEntries = shuffle(entriesWithIndex);
                     } else if (order === 'weighted') {
                         quizEntries = weightedShuffle(entriesWithIndex, useCharStats);
                     } else {
@@ -1486,6 +1507,58 @@ let quizEntries = [];
             });
         }
 
+        function quizOverride(markCorrect) {
+            if (!lastAnswerStats) return;
+            // Prevent overriding to same state
+            if (markCorrect === lastAnswerStats.wasCorrect) return;
+
+            // Send override to backend - apply correct/wrong from original stats
+            fetch('/api/update_stats', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    index: lastAnswerStats.index,
+                    correct: markCorrect,
+                    maxCount: quizSettings.maxCount,
+                    decay: quizSettings.decay,
+                    statType: lastAnswerStats.statType,
+                    override: lastAnswerStats.originalStats  // Backend will use these as base
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    // Update score display
+                    if (markCorrect) {
+                        quizCorrect++;
+                    } else {
+                        quizCorrect--;
+                    }
+                    document.getElementById('quiz-score').textContent = 'Score: ' + quizCorrect + '/' + quizTotal;
+
+                    // Update feedback display
+                    const feedback = document.getElementById('quiz-feedback');
+                    const newStatsStr = `[✓${data.newStats.correct} ✗${data.newStats.wrong} w:${calcWeight(data.newStats).toFixed(2)}]`;
+
+                    if (markCorrect) {
+                        feedback.className = 'quiz-feedback correct';
+                        feedback.innerHTML = feedback.innerHTML
+                            .replace('✗ Wrong.', '✓ Overridden to Correct!')
+                            .replace(/\[.*?✓\d+ ✗\d+ w:[\d.]+\]/, newStatsStr)
+                            .replace(/<button[^>]*>✓ Mark Correct<\/button>/, '<span style="color: #999; font-size: 12px;">(overridden)</span>');
+                    } else {
+                        feedback.className = 'quiz-feedback wrong';
+                        feedback.innerHTML = feedback.innerHTML
+                            .replace('✓ Correct!', '✗ Overridden to Wrong.')
+                            .replace(/\[.*?✓\d+ ✗\d+ w:[\d.]+\]/, newStatsStr)
+                            .replace(/<button[^>]*>✗ Mark Wrong<\/button>/, '<span style="color: #999; font-size: 12px;">(overridden)</span>');
+                    }
+
+                    lastAnswerStats.wasCorrect = markCorrect;  // Prevent double override
+                }
+            });
+        }
+
         function checkAnswer() {
             if (!currentEntry) return;
 
@@ -1571,6 +1644,14 @@ let quizEntries = [];
             const useCharStats = quizUsesCharacters();
             const currentStats = useCharStats ? currentEntry.char_stats : currentEntry.stats;
 
+            // Save original stats for potential override
+            lastAnswerStats = {
+                index: currentEntry._index,
+                originalStats: {correct: currentStats?.correct || 0, wrong: currentStats?.wrong || 0},
+                statType: useCharStats ? 'char_stats' : 'stats',
+                wasCorrect: correct
+            };
+
             // Stats display (show what they'll be AFTER this answer)
             let newCorrect = currentStats?.correct || 0;
             let newWrong = currentStats?.wrong || 0;
@@ -1591,6 +1672,11 @@ let quizEntries = [];
                 <button class="danger" onclick="quizDeleteEntry()" style="padding: 2px 8px; font-size: 12px;">Delete</button>
             </span>`;
 
+            // Override button - to fix false positives/negatives (typos, fuzzy match errors)
+            const overrideBtn = correct
+                ? `<button class="danger" onclick="quizOverride(false)" style="padding: 2px 8px; font-size: 12px; margin-left: 10px;">✗ Mark Wrong</button>`
+                : `<button class="secondary" onclick="quizOverride(true)" style="padding: 2px 8px; font-size: 12px; margin-left: 10px;">✓ Mark Correct</button>`;
+
             // Show audio button after answering (was hidden in English mode)
             if (currentAudio) {
                 document.getElementById('quiz-play-audio').style.display = 'inline-block';
@@ -1599,10 +1685,10 @@ let quizEntries = [];
             const yourAnswer = `<span style="font-size: 13px; color: ${correct ? '#666' : '#c00'};"> (you said: "${answer}")</span>`;
             if (correct) {
                 quizCorrect++;
-                feedback.innerHTML = '✓ Correct!' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
+                feedback.innerHTML = '✓ Correct!' + yourAnswer + ' ' + entryInfo + statsInfo + overrideBtn + editBtns;
                 feedback.className = 'quiz-feedback correct';
             } else {
-                feedback.innerHTML = '✗ Wrong.' + yourAnswer + ' ' + entryInfo + statsInfo + editBtns;
+                feedback.innerHTML = '✗ Wrong.' + yourAnswer + ' ' + entryInfo + statsInfo + overrideBtn + editBtns;
                 feedback.className = 'quiz-feedback wrong';
                 if (currentEntry.audio) playAudio(currentEntry.audio);
             }
@@ -2373,12 +2459,22 @@ let quizEntries = [];
             // Summary
             const summaryEl = document.getElementById('import-summary');
             const s = data.summary || {};
+            const nonIdenticalDups = (s.duplicate || 0) - (s.identical || 0);
+            let dupText = '';
+            if (s.identical > 0 && nonIdenticalDups > 0) {
+                dupText = `${nonIdenticalDups} duplicates, ${s.identical} identical (hidden)`;
+            } else if (s.identical > 0) {
+                dupText = `${s.identical} identical (hidden)`;
+            } else {
+                dupText = `${s.duplicate || 0} duplicates`;
+            }
             summaryEl.innerHTML = `
                 <span style="color: #4CAF50;">● ${s.new || 0} new</span> ·
                 <span style="color: #8BC34A;">● ${s.sandhi || 0} sandhi</span> ·
                 <span style="color: #FF9800;">● ${s.new_not_in_dict || 0} not in dict</span> ·
                 <span style="color: #f44336;">● ${s.conflict || 0} conflicts</span> ·
-                <span style="color: #999;">● ${s.duplicate || 0} duplicates</span>
+                <span style="color: #999;">● ${dupText}</span>
+                ${s.identical > 0 ? `<br><label style="font-size: 12px; color: #888; cursor: pointer; margin-top: 4px; display: inline-block;"><input type="checkbox" id="show-identical-toggle" onchange="toggleIdenticalDuplicates()" style="margin-right: 4px;">Show identical duplicates</label>` : ''}
             `;
 
             // Items list
@@ -2389,6 +2485,12 @@ let quizEntries = [];
                 const row = document.createElement('div');
                 row.className = 'import-item';
                 row.dataset.index = i;
+
+                // Hide identical duplicates by default
+                if (item.status === 'duplicate' && item.identical) {
+                    row.classList.add('identical-duplicate');
+                    row.style.display = 'none';
+                }
 
                 let statusBadge = '';
                 let statusColor = '#4CAF50';
@@ -2499,9 +2601,22 @@ let quizEntries = [];
                         <input type="checkbox" class="import-checkbox" data-index="${i}" ${canSelect ? '' : 'disabled'} ${isCheckedByDefault ? 'checked' : ''} onchange="updateImportCount()" style="margin-right: 12px; margin-top: 4px; ${showMainCheckbox ? '' : 'visibility: hidden;'}">
                         <div style="flex: 1;">
                             <span class="chinese" style="font-size: 20px;">${item.characters}</span>
-                            <span class="pinyin" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
-                            <span style="margin-left: 15px; color: #666;">${item.english}</span>
+                            <span class="pinyin import-pinyin-display" data-index="${i}" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
+                            <span class="import-english-display" data-index="${i}" style="margin-left: 15px; color: #666;">${item.english}</span>
                             <span style="float: right; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: ${statusColor}; color: white;">${statusBadge}</span>
+                            <button onclick="toggleImportEdit(${i})" style="float: right; margin-right: 8px; font-size: 11px; padding: 2px 8px; border: 1px solid #999; border-radius: 4px; background: #f0f0f0; color: #333; cursor: pointer;">Edit</button>
+                            <div class="import-edit-panel" data-index="${i}" style="display: none; margin-top: 8px; padding: 8px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px;">
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <label style="font-size: 12px; color: #666;">Pinyin:
+                                        <input type="text" class="import-edit-pinyin" data-index="${i}" value="${(item.pinyin || '').replace(/"/g, '&quot;')}" style="width: 150px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+                                    </label>
+                                    <label style="font-size: 12px; color: #666;">English:
+                                        <input type="text" class="import-edit-english" data-index="${i}" value="${(item.english || '').replace(/"/g, '&quot;')}" style="width: 200px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+                                    </label>
+                                    <button onclick="applyImportEdit(${i})" style="font-size: 11px; padding: 3px 10px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer;">Apply</button>
+                                    <button onclick="toggleImportEdit(${i})" style="font-size: 11px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer;">Cancel</button>
+                                </div>
+                            </div>
                             ${extraInfo}
                         </div>
                     </div>
@@ -2533,6 +2648,62 @@ let quizEntries = [];
                 }
             });
             updateImportCount();
+        }
+
+        function toggleImportEdit(idx) {
+            const panel = document.querySelector(`.import-edit-panel[data-index="${idx}"]`);
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none';
+            if (isHidden) {
+                // Smart pre-fill based on context
+                const item = importPreviewData?.items?.[idx];
+                if (item && item.status === 'duplicate') {
+                    const selectedRadio = document.querySelector(`input[name="dup-action-${idx}"]:checked`);
+                    if (selectedRadio && selectedRadio.value === 'skip') {
+                        // Keep existing selected — pre-fill with existing values
+                        const existing = item.existing?.[0];
+                        if (existing) {
+                            panel.querySelector('.import-edit-pinyin').value = existing.pinyin || '';
+                            panel.querySelector('.import-edit-english').value = existing.english || '';
+                        }
+                    } else {
+                        // Replace or Add as new — pre-fill with import values
+                        panel.querySelector('.import-edit-pinyin').value = item.pinyin || '';
+                        panel.querySelector('.import-edit-english').value = item.english || '';
+                    }
+                }
+                // For non-duplicates, the fields already have the import values from rendering
+            }
+            panel.style.display = isHidden ? '' : 'none';
+        }
+
+        function applyImportEdit(idx) {
+            const panel = document.querySelector(`.import-edit-panel[data-index="${idx}"]`);
+            if (!panel) return;
+            const newPinyin = panel.querySelector('.import-edit-pinyin').value.trim();
+            const newEnglish = panel.querySelector('.import-edit-english').value.trim();
+
+            // Update the preview data so confirmImport sends edited values
+            if (importPreviewData?.items?.[idx]) {
+                importPreviewData.items[idx].pinyin = newPinyin;
+                importPreviewData.items[idx].english = newEnglish;
+            }
+
+            // Update the display text
+            const pinyinDisplay = document.querySelector(`.import-pinyin-display[data-index="${idx}"]`);
+            const englishDisplay = document.querySelector(`.import-english-display[data-index="${idx}"]`);
+            if (pinyinDisplay) pinyinDisplay.textContent = newPinyin || '(no pinyin)';
+            if (englishDisplay) englishDisplay.textContent = newEnglish;
+
+            // Close the edit panel
+            panel.style.display = 'none';
+        }
+
+        function toggleIdenticalDuplicates() {
+            const show = document.getElementById('show-identical-toggle')?.checked;
+            document.querySelectorAll('.identical-duplicate').forEach(row => {
+                row.style.display = show ? '' : 'none';
+            });
         }
 
         function updateImportCount() {

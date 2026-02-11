@@ -330,14 +330,18 @@ def api_list():
     tag_filter = request.args.get('tag', '')  # Optional tag filter
     vocab = load_vocab()
 
+    # Add original index BEFORE any filtering (for correct stats updates)
+    vocab_with_index = [(i, v) for i, v in enumerate(vocab)]
+
     # Filter by tag if specified
     if tag_filter:
-        vocab = [v for v in vocab if tag_filter in v.get('tags', [])]
+        vocab_with_index = [(i, v) for i, v in vocab_with_index if tag_filter in v.get('tags', [])]
 
-    # Add pypinyin comparison for each entry
+    # Add pypinyin comparison and original index for each entry
     vocab_with_pypinyin = []
-    for entry in vocab:
+    for orig_idx, entry in vocab_with_index:
         v = dict(entry)
+        v['_index'] = orig_idx  # Original index in vocabulary for stats updates
         chars = entry.get('characters')
         if chars:
             pypinyin_ver = chars_to_pinyin(chars)
@@ -489,6 +493,7 @@ def api_update_stats():
     max_count = data.get('maxCount', 20)
     decay = data.get('decay', 1)
     stat_type = data.get('statType', 'stats')  # 'stats' or 'char_stats'
+    override = data.get('override')  # Optional: {correct: n, wrong: n} to use as base instead of current
 
     # Validate stat_type
     if stat_type not in ('stats', 'char_stats'):
@@ -503,16 +508,24 @@ def api_update_stats():
     if stat_type not in entry:
         entry[stat_type] = {'correct': 0, 'wrong': 0}
 
+    # Use override values as base if provided (for correcting false positives)
+    if override:
+        base_correct = override.get('correct', 0)
+        base_wrong = override.get('wrong', 0)
+    else:
+        base_correct = entry[stat_type]['correct']
+        base_wrong = entry[stat_type]['wrong']
+
     # Update stats (capped at max_count, answers decay the opposite count)
     if correct:
-        entry[stat_type]['correct'] = min(max_count, entry[stat_type]['correct'] + 1)
-        entry[stat_type]['wrong'] = max(0, entry[stat_type]['wrong'] - decay)
+        entry[stat_type]['correct'] = min(max_count, base_correct + 1)
+        entry[stat_type]['wrong'] = max(0, base_wrong - decay)
     else:
-        entry[stat_type]['wrong'] = min(max_count, entry[stat_type]['wrong'] + 1)
-        entry[stat_type]['correct'] = max(0, entry[stat_type]['correct'] - decay)
+        entry[stat_type]['wrong'] = min(max_count, base_wrong + 1)
+        entry[stat_type]['correct'] = max(0, base_correct - decay)
 
     save_vocab(vocab)
-    return jsonify({'success': True, 'stats': entry[stat_type], 'statType': stat_type})
+    return jsonify({'success': True, 'newStats': entry[stat_type], 'statType': stat_type})
 
 
 @app.route('/api/reset_stats', methods=['POST'])
@@ -1824,6 +1837,14 @@ def api_import_preview():
                 }
                 for e in existing_entries
             ]
+            # Flag as identical if ALL existing entries match pinyin and english
+            imported_pinyin = normalize_pinyin(item.get('pinyin', ''))
+            imported_english = item.get('english', '').strip().lower()
+            processed['identical'] = all(
+                normalize_pinyin(e.get('pinyin', '')) == imported_pinyin
+                and e.get('english', '').strip().lower() == imported_english
+                for e in existing_entries
+            )
 
         items.append(processed)
 
@@ -1836,7 +1857,8 @@ def api_import_preview():
             'sandhi': sum(1 for i in items if i['status'] == 'sandhi'),
             'new_not_in_dict': sum(1 for i in items if i['status'] == 'new_not_in_dict'),
             'conflict': sum(1 for i in items if i['status'] == 'conflict'),
-            'duplicate': sum(1 for i in items if i['status'] == 'duplicate')
+            'duplicate': sum(1 for i in items if i['status'] == 'duplicate'),
+            'identical': sum(1 for i in items if i['status'] == 'duplicate' and i.get('identical'))
         },
         'dialogues': data.get('dialogues', []),
         'grammar_patterns': data.get('grammar_patterns', [])
