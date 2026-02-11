@@ -2459,12 +2459,22 @@ let quizEntries = [];
             // Summary
             const summaryEl = document.getElementById('import-summary');
             const s = data.summary || {};
+            const nonIdenticalDups = (s.duplicate || 0) - (s.identical || 0);
+            let dupText = '';
+            if (s.identical > 0 && nonIdenticalDups > 0) {
+                dupText = `${nonIdenticalDups} duplicates, ${s.identical} identical (hidden)`;
+            } else if (s.identical > 0) {
+                dupText = `${s.identical} identical (hidden)`;
+            } else {
+                dupText = `${s.duplicate || 0} duplicates`;
+            }
             summaryEl.innerHTML = `
                 <span style="color: #4CAF50;">● ${s.new || 0} new</span> ·
                 <span style="color: #8BC34A;">● ${s.sandhi || 0} sandhi</span> ·
                 <span style="color: #FF9800;">● ${s.new_not_in_dict || 0} not in dict</span> ·
                 <span style="color: #f44336;">● ${s.conflict || 0} conflicts</span> ·
-                <span style="color: #999;">● ${s.duplicate || 0} duplicates</span>
+                <span style="color: #999;">● ${dupText}</span>
+                ${s.identical > 0 ? `<br><label style="font-size: 12px; color: #888; cursor: pointer; margin-top: 4px; display: inline-block;"><input type="checkbox" id="show-identical-toggle" onchange="toggleIdenticalDuplicates()" style="margin-right: 4px;">Show identical duplicates</label>` : ''}
             `;
 
             // Items list
@@ -2475,6 +2485,12 @@ let quizEntries = [];
                 const row = document.createElement('div');
                 row.className = 'import-item';
                 row.dataset.index = i;
+
+                // Hide identical duplicates by default
+                if (item.status === 'duplicate' && item.identical) {
+                    row.classList.add('identical-duplicate');
+                    row.style.display = 'none';
+                }
 
                 let statusBadge = '';
                 let statusColor = '#4CAF50';
@@ -2585,9 +2601,22 @@ let quizEntries = [];
                         <input type="checkbox" class="import-checkbox" data-index="${i}" ${canSelect ? '' : 'disabled'} ${isCheckedByDefault ? 'checked' : ''} onchange="updateImportCount()" style="margin-right: 12px; margin-top: 4px; ${showMainCheckbox ? '' : 'visibility: hidden;'}">
                         <div style="flex: 1;">
                             <span class="chinese" style="font-size: 20px;">${item.characters}</span>
-                            <span class="pinyin" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
-                            <span style="margin-left: 15px; color: #666;">${item.english}</span>
+                            <span class="pinyin import-pinyin-display" data-index="${i}" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
+                            <span class="import-english-display" data-index="${i}" style="margin-left: 15px; color: #666;">${item.english}</span>
                             <span style="float: right; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: ${statusColor}; color: white;">${statusBadge}</span>
+                            <button onclick="toggleImportEdit(${i})" style="float: right; margin-right: 8px; font-size: 11px; padding: 2px 8px; border: 1px solid #999; border-radius: 4px; background: #f0f0f0; color: #333; cursor: pointer;">Edit</button>
+                            <div class="import-edit-panel" data-index="${i}" style="display: none; margin-top: 8px; padding: 8px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px;">
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <label style="font-size: 12px; color: #666;">Pinyin:
+                                        <input type="text" class="import-edit-pinyin" data-index="${i}" value="${(item.pinyin || '').replace(/"/g, '&quot;')}" style="width: 150px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+                                    </label>
+                                    <label style="font-size: 12px; color: #666;">English:
+                                        <input type="text" class="import-edit-english" data-index="${i}" value="${(item.english || '').replace(/"/g, '&quot;')}" style="width: 200px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+                                    </label>
+                                    <button onclick="applyImportEdit(${i})" style="font-size: 11px; padding: 3px 10px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer;">Apply</button>
+                                    <button onclick="toggleImportEdit(${i})" style="font-size: 11px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer;">Cancel</button>
+                                </div>
+                            </div>
                             ${extraInfo}
                         </div>
                     </div>
@@ -2619,6 +2648,62 @@ let quizEntries = [];
                 }
             });
             updateImportCount();
+        }
+
+        function toggleImportEdit(idx) {
+            const panel = document.querySelector(`.import-edit-panel[data-index="${idx}"]`);
+            if (!panel) return;
+            const isHidden = panel.style.display === 'none';
+            if (isHidden) {
+                // Smart pre-fill based on context
+                const item = importPreviewData?.items?.[idx];
+                if (item && item.status === 'duplicate') {
+                    const selectedRadio = document.querySelector(`input[name="dup-action-${idx}"]:checked`);
+                    if (selectedRadio && selectedRadio.value === 'skip') {
+                        // Keep existing selected — pre-fill with existing values
+                        const existing = item.existing?.[0];
+                        if (existing) {
+                            panel.querySelector('.import-edit-pinyin').value = existing.pinyin || '';
+                            panel.querySelector('.import-edit-english').value = existing.english || '';
+                        }
+                    } else {
+                        // Replace or Add as new — pre-fill with import values
+                        panel.querySelector('.import-edit-pinyin').value = item.pinyin || '';
+                        panel.querySelector('.import-edit-english').value = item.english || '';
+                    }
+                }
+                // For non-duplicates, the fields already have the import values from rendering
+            }
+            panel.style.display = isHidden ? '' : 'none';
+        }
+
+        function applyImportEdit(idx) {
+            const panel = document.querySelector(`.import-edit-panel[data-index="${idx}"]`);
+            if (!panel) return;
+            const newPinyin = panel.querySelector('.import-edit-pinyin').value.trim();
+            const newEnglish = panel.querySelector('.import-edit-english').value.trim();
+
+            // Update the preview data so confirmImport sends edited values
+            if (importPreviewData?.items?.[idx]) {
+                importPreviewData.items[idx].pinyin = newPinyin;
+                importPreviewData.items[idx].english = newEnglish;
+            }
+
+            // Update the display text
+            const pinyinDisplay = document.querySelector(`.import-pinyin-display[data-index="${idx}"]`);
+            const englishDisplay = document.querySelector(`.import-english-display[data-index="${idx}"]`);
+            if (pinyinDisplay) pinyinDisplay.textContent = newPinyin || '(no pinyin)';
+            if (englishDisplay) englishDisplay.textContent = newEnglish;
+
+            // Close the edit panel
+            panel.style.display = 'none';
+        }
+
+        function toggleIdenticalDuplicates() {
+            const show = document.getElementById('show-identical-toggle')?.checked;
+            document.querySelectorAll('.identical-duplicate').forEach(row => {
+                row.style.display = show ? '' : 'none';
+            });
         }
 
         function updateImportCount() {

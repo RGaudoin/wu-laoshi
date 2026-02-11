@@ -1837,6 +1837,14 @@ def api_import_preview():
                 }
                 for e in existing_entries
             ]
+            # Flag as identical if ALL existing entries match pinyin and english
+            imported_pinyin = normalize_pinyin(item.get('pinyin', ''))
+            imported_english = item.get('english', '').strip().lower()
+            processed['identical'] = all(
+                normalize_pinyin(e.get('pinyin', '')) == imported_pinyin
+                and e.get('english', '').strip().lower() == imported_english
+                for e in existing_entries
+            )
 
         items.append(processed)
 
@@ -1849,7 +1857,8 @@ def api_import_preview():
             'sandhi': sum(1 for i in items if i['status'] == 'sandhi'),
             'new_not_in_dict': sum(1 for i in items if i['status'] == 'new_not_in_dict'),
             'conflict': sum(1 for i in items if i['status'] == 'conflict'),
-            'duplicate': sum(1 for i in items if i['status'] == 'duplicate')
+            'duplicate': sum(1 for i in items if i['status'] == 'duplicate'),
+            'identical': sum(1 for i in items if i['status'] == 'duplicate' and i.get('identical'))
         },
         'dialogues': data.get('dialogues', []),
         'grammar_patterns': data.get('grammar_patterns', [])
