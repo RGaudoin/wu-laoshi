@@ -23,6 +23,14 @@ app = Flask(__name__)
 # Load dictionary once at startup
 print("Loading dictionary...")
 BY_PINYIN, BY_CHARS = load_cedict()
+# Build chars -> all entries index (BY_CHARS only stores one entry per character)
+BY_CHARS_ALL = {}
+for entries in BY_PINYIN.values():
+    for entry in entries:
+        simp = entry['simplified']
+        if simp not in BY_CHARS_ALL:
+            BY_CHARS_ALL[simp] = []
+        BY_CHARS_ALL[simp].append(entry)
 print(f"Dictionary loaded: {len(BY_CHARS)} entries")
 print(f"Vocabulary: {len(load_vocab())} entries")
 
@@ -67,8 +75,10 @@ def api_lookup():
 
     # Search dictionary - collect all matches first
     all_dict_results = []
-    if query in BY_CHARS:
-        all_dict_results.append(BY_CHARS[query])
+    has_chinese = any('\u4e00' <= c <= '\u9fff' for c in query)
+    if has_chinese:
+        # Use BY_CHARS_ALL to get all readings for polyphonic characters
+        all_dict_results = BY_CHARS_ALL.get(query, [])
     else:
         pinyin_plain = strip_tones(query).replace(' ', '')
         if pinyin_plain in BY_PINYIN:
