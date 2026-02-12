@@ -53,6 +53,7 @@
                         <option value="english">English</option>
                         <option value="characters">Characters</option>
                         <option value="pinyin">Pinyin</option>
+                        <option value="pinyin_characters">Pinyin + Characters</option>
                         <option value="audio">Audio Only</option>
                     </select>
                 </label>
@@ -96,6 +97,40 @@
                 <button class="secondary" onclick="nextQuestion()">Next →</button>
             </div>
             <div class="score" id="quiz-score">Score: 0/0</div>
+
+            <!-- Inline Lookup Panel -->
+            <div id="quiz-lookup-panel" class="quiz-lookup-panel collapsed">
+                <button class="quiz-lookup-toggle" onclick="toggleQuizLookup()">
+                    <span>&#128269; Lookup</span>
+                    <span class="quiz-lookup-arrow">&#9660;</span>
+                </button>
+                <div class="quiz-lookup-body">
+                    <div class="quiz-lookup-search">
+                        <input type="text" id="quiz-lookup-input"
+                               placeholder="Search (English, pinyin, or characters)"
+                               autocomplete="off">
+                        <button class="secondary" onclick="doQuizLookup()">Search</button>
+                    </div>
+                    <div class="quiz-lookup-results">
+                        <div id="quiz-lookup-vocab-section" style="display: none;">
+                            <h4>Your Vocabulary</h4>
+                            <div id="quiz-lookup-vocab"></div>
+                        </div>
+                        <div id="quiz-lookup-components-section" style="display: none;">
+                            <h4>Components</h4>
+                            <div id="quiz-lookup-components"></div>
+                        </div>
+                        <div id="quiz-lookup-dict-section" style="display: none;">
+                            <h4>Dictionary</h4>
+                            <div id="quiz-lookup-dict-count"></div>
+                            <div id="quiz-lookup-dict"></div>
+                        </div>
+                        <div id="quiz-lookup-empty" style="display: none; color: #999; text-align: center; padding: 15px;">
+                            No results found.
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- TONES TAB -->
@@ -359,6 +394,7 @@
         <!-- LOOKUP TAB -->
         <div id="vocabulary-lookup" class="tab-content active">
             <div style="margin-bottom: 20px;">
+                <button id="lookup-back-btn" class="secondary" onclick="lookupBack()" style="display: none; padding: 8px 12px; font-size: 14px; margin-right: 5px;">&larr; Back</button>
                 <input type="text" id="search-input" placeholder="Search (English, 中文, or pinyin)">
                 <button onclick="doSearch()">Search</button>
             </div>

@@ -531,10 +531,16 @@ let quizEntries = [];
         // LOOKUP
         let lookupQuery = '';
         let lookupDictOffset = 0;
+        let lookupHistory = [];
 
         function doSearch(loadMore = false) {
             const query = document.getElementById('search-input').value;
             if (!loadMore) {
+                // Push previous query to history (if different)
+                if (lookupQuery && lookupQuery !== query) {
+                    lookupHistory.push(lookupQuery);
+                }
+                updateLookupBackBtn();
                 lookupQuery = query;
                 lookupDictOffset = 0;
             }
@@ -551,7 +557,7 @@ let quizEntries = [];
                             const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'lookup', ${tagsJson}`;
                             vocabHtml += `<div class="vocab-item" onclick="openEditModal(${editParams})" style="cursor: pointer;">
                                 <span class="vocab-english">${v.english}</span>
-                                <span class="vocab-chars chinese">${v.characters || ''}</span>
+                                <span class="vocab-chars chinese">${makeCharsClickable(v.characters || '')}</span>
                                 <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
                                 ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">🔊</button>` : ''}
                             </div>`;
@@ -566,9 +572,10 @@ let quizEntries = [];
                             pinyinDisplay = `${d.pinyin} <span style="color: #999; font-size: 12px;">(pypinyin: ${d.pinyin_pypinyin})</span>`;
                         }
                         dictHtml += `<div class="vocab-item">
-                            <span class="vocab-chars chinese">${d.simplified}</span>
+                            <span class="vocab-chars chinese">${makeCharsClickable(d.simplified)}</span>
                             <span class="vocab-pinyin pinyin">${pinyinDisplay}</span>
                             <span>${d.definitions.slice(0, 3).join(', ')}</span>
+                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${d.simplified}')" style="opacity: 0.6;">&#128266;</button>
                         </div>`;
                     });
 
@@ -600,6 +607,33 @@ let quizEntries = [];
         function loadMoreLookup() {
             lookupDictOffset += 10;
             doSearch(true);
+        }
+
+        function lookupBack() {
+            if (lookupHistory.length === 0) return;
+            // If we came from the List tab, go straight back (skip intermediate lookups)
+            if (lookupHistory.includes('__LIST__')) {
+                const vocabSection = document.getElementById('section-vocabulary');
+                if (vocabSection) {
+                    vocabSection.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    vocabSection.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                    document.getElementById('vocabulary-list').classList.add('active');
+                    const tabBtn = vocabSection.querySelector('.tab[onclick*="list"]');
+                    if (tabBtn) tabBtn.classList.add('active');
+                }
+                lookupHistory = [];
+                updateLookupBackBtn();
+                return;
+            }
+            const prev = lookupHistory.pop();
+            document.getElementById('search-input').value = prev;
+            lookupQuery = '';  // Reset so doSearch doesn't push current as history
+            doSearch();
+        }
+
+        function updateLookupBackBtn() {
+            const btn = document.getElementById('lookup-back-btn');
+            if (btn) btn.style.display = lookupHistory.length > 0 ? 'inline-block' : 'none';
         }
 
         function lookupEditWord(index, english, pinyin, dictPinyin, pypinyinPinyin) {
@@ -866,7 +900,7 @@ let quizEntries = [];
                             <span onclick="event.stopPropagation(); toggleFocus(${idx})" style="cursor: pointer; font-size: 18px; ${focusStyle}" title="Toggle focus">${focusStar}</span>
                             <span>${idx + 1}.</span>
                             <span class="vocab-english">${v.english}</span>
-                            <span class="vocab-chars chinese">${v.characters || ''}</span>
+                            <span class="vocab-chars chinese">${makeCharsClickable(v.characters || '')}</span>
                             <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
                             ${statsDisplay}
                             ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">🔊</button>` : ''}
@@ -1333,6 +1367,7 @@ let quizEntries = [];
         }
 
         function startQuiz() {
+            clearQuizLookup();
             const tagFilter = document.getElementById('quiz-tag-filter').value;
             const tagParam = tagFilter ? '?tag=' + encodeURIComponent(tagFilter) : '';
             fetch('/api/list' + tagParam)
@@ -1391,6 +1426,9 @@ let quizEntries = [];
             document.getElementById('quiz-next-btn').style.display = 'none';
             document.getElementById('quiz-input-area').style.display = 'flex';
 
+            // Collapse lookup panel for fresh start
+            document.getElementById('quiz-lookup-panel').classList.add('collapsed');
+
             if (quizIndex >= quizEntries.length) {
                 document.getElementById('quiz-prompt').textContent =
                     'Quiz Complete! ' + quizCorrect + '/' + quizTotal;
@@ -1416,7 +1454,7 @@ let quizEntries = [];
                 prompt.textContent = currentEntry.english;
                 prompt.className = 'quiz-prompt';
             } else if (showMode === 'characters') {
-                prompt.textContent = currentEntry.characters || '?';
+                prompt.innerHTML = makeCharsClickable(currentEntry.characters || '?');
                 prompt.className = 'quiz-prompt chinese';
             } else if (showMode === 'pinyin') {
                 prompt.innerHTML = '';
@@ -1432,6 +1470,16 @@ let quizEntries = [];
                         prompt.appendChild(altSpan);
                     }
                 }
+                prompt.className = 'quiz-prompt pinyin';
+            } else if (showMode === 'pinyin_characters') {
+                prompt.innerHTML = '';
+                const pinyinSpan = document.createElement('span');
+                pinyinSpan.textContent = currentEntry.pinyin || '?';
+                prompt.appendChild(pinyinSpan);
+                const charSpan = document.createElement('span');
+                charSpan.innerHTML = ` ${makeCharsClickable(currentEntry.characters || '')}`;
+                charSpan.style.cssText = 'font-size: 0.6em; color: #999; margin-left: 8px;';
+                prompt.appendChild(charSpan);
                 prompt.className = 'quiz-prompt pinyin';
             } else if (showMode === 'audio') {
                 prompt.textContent = '🔊';
@@ -1579,7 +1627,7 @@ let quizEntries = [];
                         correct = quizAllEntries.some(e =>
                             e.pinyin === currentEntry.pinyin && matchEnglish(answer, e.english)
                         );
-                    } else if (showMode === 'characters') {
+                    } else if (showMode === 'characters' || showMode === 'pinyin_characters') {
                         correct = quizAllEntries.some(e =>
                             e.characters === currentEntry.characters && matchEnglish(answer, e.english)
                         );
@@ -1637,7 +1685,7 @@ let quizEntries = [];
                 ? ` <span style="color: #999; font-size: 14px;">(also: ${altMeanings.join('; ')})</span>`
                 : '';
 
-            const entryInfo = `<span class="chinese">${currentEntry.characters || ''}</span> ` +
+            const entryInfo = `<span class="chinese">${makeCharsClickable(currentEntry.characters || '')}</span> ` +
                 `<span class="pinyin">(${pinyinDisplay})</span> - <span id="quiz-english-display">${currentEntry.english}</span>${altDisplay}`;
 
             // Determine which stats to use based on quiz mode
@@ -1719,6 +1767,209 @@ let quizEntries = [];
         document.getElementById('quiz-input').addEventListener('keypress', e => {
             if (e.key === 'Enter') checkAnswer();
         });
+
+        // QUIZ LOOKUP PANEL
+        let quizLookupQuery = '';
+        let quizLookupDictOffset = 0;
+
+        function toggleQuizLookup() {
+            const panel = document.getElementById('quiz-lookup-panel');
+            panel.classList.toggle('collapsed');
+            if (!panel.classList.contains('collapsed')) {
+                document.getElementById('quiz-lookup-input').focus();
+            }
+        }
+
+        function doQuizLookup(loadMore = false) {
+            const input = document.getElementById('quiz-lookup-input');
+            const query = input.value.trim();
+            if (!query) return;
+
+            if (!loadMore) {
+                quizLookupQuery = query;
+                quizLookupDictOffset = 0;
+            }
+
+            fetch('/api/lookup?q=' + encodeURIComponent(quizLookupQuery) + '&offset=' + quizLookupDictOffset)
+                .then(r => r.json())
+                .then(data => {
+                    const vocabSection = document.getElementById('quiz-lookup-vocab-section');
+                    const dictSection = document.getElementById('quiz-lookup-dict-section');
+                    const componentsSection = document.getElementById('quiz-lookup-components-section');
+                    const emptyMsg = document.getElementById('quiz-lookup-empty');
+
+                    if (!loadMore) {
+                        // Render vocabulary results
+                        let vocabHtml = '';
+                        data.vocab.forEach(v => {
+                            vocabHtml += `<div class="vocab-item">
+                                <span class="vocab-english">${v.english}</span>
+                                <span class="vocab-chars chinese">${makeCharsClickable(v.characters || '')}</span>
+                                <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
+                                ${v.audio
+                                    ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">&#128266;</button>`
+                                    : (v.characters
+                                        ? `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${v.characters}')" style="opacity: 0.6;">&#128266;</button>`
+                                        : '')}
+                            </div>`;
+                        });
+                        vocabSection.style.display = data.vocab.length > 0 ? 'block' : 'none';
+                        document.getElementById('quiz-lookup-vocab').innerHTML = vocabHtml;
+
+                        // Auto-decompose: if query is multi-character Chinese, look up components
+                        const chineseChars = quizLookupQuery.match(/[\u4e00-\u9fff]/g);
+                        if (chineseChars && chineseChars.length > 1) {
+                            decomposeComponents(chineseChars);
+                        } else {
+                            componentsSection.style.display = 'none';
+                        }
+                    }
+
+                    // Render dictionary results
+                    let dictHtml = '';
+                    data.dict.forEach(d => {
+                        dictHtml += `<div class="vocab-item">
+                            <span class="vocab-chars chinese">${makeCharsClickable(d.simplified)}</span>
+                            <span class="vocab-pinyin pinyin">${d.pinyin}</span>
+                            <span>${d.definitions.slice(0, 3).join(', ')}</span>
+                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${d.simplified}')" style="opacity: 0.6;">&#128266;</button>
+                        </div>`;
+                    });
+
+                    const showing = data.dict_offset + data.dict.length;
+                    let countHtml = data.dict_total > 0
+                        ? `<p style="color: #666; font-size: 13px;">Showing ${showing} of ${data.dict_total}</p>`
+                        : '';
+
+                    if (data.dict_has_more) {
+                        dictHtml += `<button class="secondary" onclick="loadMoreQuizLookup()" style="margin-top: 8px; padding: 5px 12px; font-size: 13px;">Load More</button>`;
+                    }
+
+                    if (loadMore) {
+                        const container = document.getElementById('quiz-lookup-dict');
+                        const oldBtn = container.querySelector('button.secondary');
+                        if (oldBtn) oldBtn.remove();
+                        container.insertAdjacentHTML('beforeend', dictHtml);
+                        document.getElementById('quiz-lookup-dict-count').innerHTML = countHtml;
+                    } else {
+                        dictSection.style.display = data.dict.length > 0 ? 'block' : 'none';
+                        document.getElementById('quiz-lookup-dict-count').innerHTML = countHtml;
+                        document.getElementById('quiz-lookup-dict').innerHTML = dictHtml;
+                    }
+
+                    // Show empty message if no results at all
+                    if (!loadMore && data.vocab.length === 0 && data.dict.length === 0) {
+                        emptyMsg.style.display = 'block';
+                    } else {
+                        emptyMsg.style.display = 'none';
+                    }
+                });
+        }
+
+        function loadMoreQuizLookup() {
+            quizLookupDictOffset += 10;
+            doQuizLookup(true);
+        }
+
+        function decomposeComponents(chars) {
+            const section = document.getElementById('quiz-lookup-components-section');
+            const container = document.getElementById('quiz-lookup-components');
+            container.innerHTML = '<p style="color: #999; font-size: 13px;">Loading...</p>';
+            section.style.display = 'block';
+
+            Promise.all(chars.map(ch =>
+                fetch('/api/lookup?q=' + encodeURIComponent(ch))
+                    .then(r => r.json())
+                    .then(data => ({ char: ch, data }))
+            )).then(results => {
+                let html = '';
+                results.forEach(({ char, data }) => {
+                    // Prefer vocab entry, fall back to dictionary
+                    const vocabMatch = data.vocab.find(v => v.characters === char);
+                    const dictMatch = data.dict.find(d => d.simplified === char);
+
+                    let pinyin = '', meaning = '', audioBtn = '';
+                    if (vocabMatch) {
+                        pinyin = vocabMatch.pinyin || '';
+                        meaning = vocabMatch.english;
+                        audioBtn = vocabMatch.audio
+                            ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${vocabMatch.audio}')">&#128266;</button>`
+                            : `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${char}')" style="opacity: 0.6;">&#128266;</button>`;
+                    } else if (dictMatch) {
+                        pinyin = dictMatch.pinyin;
+                        meaning = dictMatch.definitions.slice(0, 3).join(', ');
+                        audioBtn = `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${char}')" style="opacity: 0.6;">&#128266;</button>`;
+                    } else {
+                        meaning = '(not found)';
+                    }
+
+                    html += `<div class="vocab-item">
+                        <span class="vocab-chars chinese">${makeCharsClickable(char)}</span>
+                        <span class="vocab-pinyin pinyin">${pinyin}</span>
+                        <span>${meaning}</span>
+                        ${audioBtn}
+                    </div>`;
+                });
+                container.innerHTML = html;
+            });
+        }
+
+        // Clickable characters utility
+        function makeCharsClickable(text) {
+            if (!text) return '';
+            return text.replace(/[\u4e00-\u9fff]/g,
+                char => `<span class="clickable-char" onclick="event.stopPropagation(); charLookup('${char}')">${char}</span>`);
+        }
+
+        function charLookup(char) {
+            // Context-aware: quiz tab uses quiz lookup panel, vocab tab uses vocab search
+            const learnSection = document.getElementById('section-learn');
+            if (learnSection && learnSection.classList.contains('active')) {
+                // On learn section: use quiz lookup panel
+                const panel = document.getElementById('quiz-lookup-panel');
+                if (panel.classList.contains('collapsed')) {
+                    panel.classList.remove('collapsed');
+                }
+                document.getElementById('quiz-lookup-input').value = char;
+                doQuizLookup();
+            } else {
+                // On vocab/other section: use vocab search, switch to Lookup tab
+                const vocabSection = document.getElementById('section-vocabulary');
+                if (vocabSection) {
+                    const lookupTab = document.getElementById('vocabulary-lookup');
+                    if (lookupTab && !lookupTab.classList.contains('active')) {
+                        // Coming from List (or other) tab — push sentinel for back navigation
+                        lookupHistory = ['__LIST__'];
+                        vocabSection.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                        vocabSection.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                        lookupTab.classList.add('active');
+                        const tabBtn = vocabSection.querySelector('.tab[onclick*="lookup"]');
+                        if (tabBtn) tabBtn.classList.add('active');
+                    }
+                }
+                document.getElementById('search-input').value = char;
+                doSearch();
+            }
+        }
+
+        // Keyboard handler for quiz lookup input
+        document.getElementById('quiz-lookup-input').addEventListener('keydown', e => {
+            e.stopPropagation();
+            if (e.key === 'Enter') {
+                doQuizLookup();
+            }
+        });
+
+        function clearQuizLookup() {
+            document.getElementById('quiz-lookup-vocab').innerHTML = '';
+            document.getElementById('quiz-lookup-dict').innerHTML = '';
+            document.getElementById('quiz-lookup-components').innerHTML = '';
+            document.getElementById('quiz-lookup-vocab-section').style.display = 'none';
+            document.getElementById('quiz-lookup-dict-section').style.display = 'none';
+            document.getElementById('quiz-lookup-components-section').style.display = 'none';
+            document.getElementById('quiz-lookup-empty').style.display = 'none';
+            document.getElementById('quiz-lookup-input').value = '';
+        }
 
         // AUDIO
         function playAudio(path) {
