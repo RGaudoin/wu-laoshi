@@ -40,6 +40,16 @@ export CLAUDE_API_KEY=your-key-here
 
 Currently wired to the Anthropic API, but the integration is a single endpoint in `vocab_web.py` — easy to adapt to OpenAI, Ollama, or any other provider.
 
+## Importing from Textbook Pages
+
+The tool includes a workflow for extracting vocabulary from textbook photos:
+
+1. **Photograph** your textbook pages and place the images in `data/import/book_name/lesson_N/`
+2. **Extract** using the included Claude Code skill: `/extract-lesson data/import/book_name/lesson_N` — this reads the photos and produces a structured `extracted.json` with vocabulary, dialogues, and grammar
+3. **Import** via the Import tab in the web app — preview everything, review pinyin against the dictionary, select what to add, and import with audio auto-generated
+
+The extraction step requires [Claude Code](https://github.com/anthropics/claude-code) (or you can produce the JSON manually). See [docs/import.md](docs/import.md) for the schema and technical details.
+
 ## Documentation
 
 - [Development notes](docs/development.md) — pinyin handling, CLI usage, data files
