@@ -16,7 +16,7 @@ It grew from a personal study aid into a fairly complete system for managing voc
 ## Quick Start
 
 ```bash
-git clone https://github.com/yourusername/wu-laoshi.git
+git clone https://github.com/RGaudoin/wu-laoshi.git
 cd wu-laoshi
 
 # Install dependencies
