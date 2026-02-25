@@ -4,6 +4,12 @@ A web-based Mandarin vocabulary learning tool built to accompany the beginner co
 
 It grew from a personal study aid into a fairly complete system for managing vocabulary, quizzing, practising tones, and exploring how Chinese words are built from individual characters. Not a polished product — just a tool that works well for one learner and might be useful to others on a similar path.
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Start](screenshots/start.png) | ![Quiz](screenshots/quiz.png) |
+
 ## Features
 
 - **Vocabulary management** — add words manually or import from course materials; look up definitions via CC-CEDICT (~124k entries); auto-generate pinyin and audio
