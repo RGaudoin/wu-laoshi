@@ -8,7 +8,7 @@ It grew from a personal study aid into a fairly complete system for managing voc
 
 | | |
 |---|---|
-| ![Start](screenshots/start.png) | ![Quiz](screenshots/quiz.png) |
+| <img src="screenshots/start.png" width="350"> | <img src="screenshots/quiz.png" width="350"> |
 
 ## Features
 
