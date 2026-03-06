@@ -19,10 +19,11 @@ The folder should contain a subfolder with `.jpg` photos of textbook pages.
 ## Process
 
 1. **Find photos**: Look for `.jpg` files in subfolders of the lesson directory
-2. **Read all photos**: Read every image to understand the full lesson content
-3. **Extract content** into the schema sections below
+2. **Read photos in batches**: Read images in batches of ~6 at a time to avoid hitting output token limits. For each batch, note the content but do not write yet.
+3. **Extract content** into the schema sections below, combining information from all batches
 4. **Write** `extracted.json` to the lesson folder
-5. **Report** a summary of what was extracted (counts of vocab, dialogues, etc.)
+5. **Completeness check**: After writing, verify the extraction covers all pages. Report which textbook sections were found (Vocabulary, Story Time, Vocab Workshop, Grammar Workshop, Fluency Practice, Assessment, Answer Keys). If any expected section is missing, flag it and offer to re-read specific photos.
+6. **Report** a summary of what was extracted (counts of vocab, dialogues, etc.)
 
 ## What to Extract
 
@@ -98,6 +99,15 @@ Write `extracted.json` following this structure:
 - For dialogues, include the speaker name in pinyin as shown in the textbook
 - Set `extracted_date` to today's date
 - List all image filenames in `source.image_files`
+
+## Handling Large Lessons
+
+Lessons typically have 10-12 photos. To avoid incomplete extractions from output token limits:
+
+- **Read in batches**: Process ~6 photos at a time. After reading the first batch, summarise what was found before reading the next batch.
+- **Prioritise completeness over detail**: If running low on space, ensure all vocabulary items and dialogue lines are captured first. Grammar explanations and exercise answers are secondary.
+- **Flag gaps explicitly**: If a photo was unreadable or a section seems incomplete, add a `"notes"` field in the source object listing any concerns (e.g. `"notes": "Page 85 was blurry; answer key may be incomplete"`).
+- **Prefer multiple passes over truncation**: It is better to do two passes through the photos than to produce a truncated extraction.
 
 ## Reference
 
