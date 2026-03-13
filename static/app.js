@@ -1,5 +1,16 @@
 // Wu Laoshi - Mandarin Vocabulary Tool
 
+// HTML-escape user data to prevent stored XSS
+function esc(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 let quizEntries = [];
         let quizAllEntries = [];  // Full vocab for duplicate matching (not limited by count)
         let quizIndex = 0;
@@ -233,7 +244,7 @@ let quizEntries = [];
                             const currentVal = select.value;
                             select.innerHTML = '<option value="">All</option>';
                             tags.forEach(tag => {
-                                select.innerHTML += `<option value="${tag}">${tag}</option>`;
+                                select.innerHTML += `<option value="${esc(tag)}">${esc(tag)}</option>`;
                             });
                             select.value = currentVal; // Preserve selection
                         }
@@ -405,7 +416,7 @@ let quizEntries = [];
             // Audio button
             const audioContainer = document.getElementById('edit-audio-container');
             if (audio) {
-                audioContainer.innerHTML = `<button class="audio-btn" onclick="playAudio('${audio}')">🔊 Play Audio</button>`;
+                audioContainer.innerHTML = `<button class="audio-btn" onclick="playAudio('${esc(audio)}')">🔊 Play Audio</button>`;
             } else {
                 audioContainer.innerHTML = '';
             }
@@ -429,10 +440,10 @@ let quizEntries = [];
 
                     let html = '<span style="font-size: 13px;">Choose: </span>';
                     if (data.dict) {
-                        html += `<button class="secondary" onclick="document.getElementById('edit-pinyin').value='${data.dict}'" style="padding: 3px 8px; font-size: 13px; margin-right: 5px;">dict: ${data.dict}</button>`;
+                        html += `<button class="secondary" onclick="document.getElementById('edit-pinyin').value='${esc(data.dict)}'" style="padding: 3px 8px; font-size: 13px; margin-right: 5px;">dict: ${esc(data.dict)}</button>`;
                     }
                     if (data.pypinyin && data.pypinyin !== data.dict) {
-                        html += `<button class="secondary" onclick="document.getElementById('edit-pinyin').value='${data.pypinyin}'" style="padding: 3px 8px; font-size: 13px;">pypinyin: ${data.pypinyin}</button>`;
+                        html += `<button class="secondary" onclick="document.getElementById('edit-pinyin').value='${esc(data.pypinyin)}'" style="padding: 3px 8px; font-size: 13px;">pypinyin: ${esc(data.pypinyin)}</button>`;
                     }
                     container.innerHTML = html;
                 });
@@ -554,12 +565,12 @@ let quizEntries = [];
                             const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
                             const escEnglish = v.english.replace(/'/g, "\\'");
                             const tagsJson = JSON.stringify(v.tags || []);
-                            const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'lookup', ${tagsJson}`;
+                            const editParams = `${idx}, '${esc(v.characters || '')}', '${esc(escEnglish)}', '${esc(v.pinyin || '')}', ${hasPinyinOptions ? `'${esc(v.pinyin_dict)}', '${esc(v.pinyin_pypinyin)}'` : 'null, null'}, '${esc(v.audio || '')}', 'lookup', ${tagsJson}`;
                             vocabHtml += `<div class="vocab-item" onclick="openEditModal(${editParams})" style="cursor: pointer;">
-                                <span class="vocab-english">${v.english}</span>
+                                <span class="vocab-english">${esc(v.english)}</span>
                                 <span class="vocab-chars chinese">${makeCharsClickable(v.characters || '')}</span>
-                                <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
-                                ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">🔊</button>` : ''}
+                                <span class="vocab-pinyin pinyin">${esc(v.pinyin || '')}</span>
+                                ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${esc(v.audio)}')">🔊</button>` : ''}
                             </div>`;
                         });
                         document.getElementById('vocab-results').innerHTML = vocabHtml || '<p>(not in vocabulary)</p>';
@@ -567,15 +578,15 @@ let quizEntries = [];
 
                     let dictHtml = loadMore ? '' : '';
                     data.dict.forEach(d => {
-                        let pinyinDisplay = d.pinyin;
+                        let pinyinDisplay = esc(d.pinyin);
                         if (d.pinyin_pypinyin) {
-                            pinyinDisplay = `${d.pinyin} <span style="color: #999; font-size: 12px;">(pypinyin: ${d.pinyin_pypinyin})</span>`;
+                            pinyinDisplay = `${esc(d.pinyin)} <span style="color: #999; font-size: 12px;">(pypinyin: ${esc(d.pinyin_pypinyin)})</span>`;
                         }
                         dictHtml += `<div class="vocab-item">
                             <span class="vocab-chars chinese">${makeCharsClickable(d.simplified)}</span>
                             <span class="vocab-pinyin pinyin">${pinyinDisplay}</span>
-                            <span>${d.definitions.slice(0, 3).join(', ')}</span>
-                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${d.simplified}')" style="opacity: 0.6;">&#128266;</button>
+                            <span>${d.definitions.slice(0, 3).map(x => esc(x)).join(', ')}</span>
+                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${esc(d.simplified)}')" style="opacity: 0.6;">&#128266;</button>
                         </div>`;
                     });
 
@@ -642,15 +653,15 @@ let quizEntries = [];
             const item = document.getElementById(`lookup-item-${index}`);
 
             // Replace English with input
-            englishSpan.innerHTML = `<input type="text" id="lookup-edit-english-${index}" value="${english}" style="width: 150px;">`;
+            englishSpan.innerHTML = `<input type="text" id="lookup-edit-english-${index}" value="${esc(english)}" style="width: 150px;">`;
 
             // Replace pinyin with selector if options exist
             if (dictPinyin && pypinyinPinyin && dictPinyin !== pypinyinPinyin) {
                 const isDict = pinyin === dictPinyin;
                 pinyinSpan.innerHTML = `
                     <select id="lookup-edit-pinyin-${index}">
-                        <option value="${dictPinyin}" ${isDict ? 'selected' : ''}>dict: ${dictPinyin}</option>
-                        <option value="${pypinyinPinyin}" ${!isDict ? 'selected' : ''}>pypinyin: ${pypinyinPinyin}</option>
+                        <option value="${esc(dictPinyin)}" ${isDict ? 'selected' : ''}>dict: ${esc(dictPinyin)}</option>
+                        <option value="${esc(pypinyinPinyin)}" ${!isDict ? 'selected' : ''}>pypinyin: ${esc(pypinyinPinyin)}</option>
                     </select>`;
             }
 
@@ -728,15 +739,15 @@ let quizEntries = [];
                         let pinyinOptions = '';
                         if (m.pinyin_pypinyin) {
                             pinyinOptions = `<div style="margin-top: 5px; font-size: 13px;">
-                                <label><input type="radio" name="pinyin_${idx}" value="dict" checked onchange="updatePinyin(${idx})"> dict: ${m.pinyin}</label>
-                                <label style="margin-left: 10px;"><input type="radio" name="pinyin_${idx}" value="pypinyin" onchange="updatePinyin(${idx})"> pypinyin: ${m.pinyin_pypinyin}</label>
+                                <label><input type="radio" name="pinyin_${idx}" value="dict" checked onchange="updatePinyin(${idx})"> dict: ${esc(m.pinyin)}</label>
+                                <label style="margin-left: 10px;"><input type="radio" name="pinyin_${idx}" value="pypinyin" onchange="updatePinyin(${idx})"> pypinyin: ${esc(m.pinyin_pypinyin)}</label>
                             </div>`;
                         }
                         html += `<div class="match-item" onclick="selectMatch(${idx})">
-                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${m.simplified}')" style="margin-right: 8px;">🔊</button>
-                            <span class="chinese" style="font-size: 20px;">${m.simplified}</span>
-                            <span class="pinyin">(${m.pinyin})</span>
-                            - ${m.definitions.slice(0, 2).join(', ')}
+                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${esc(m.simplified)}')" style="margin-right: 8px;">🔊</button>
+                            <span class="chinese" style="font-size: 20px;">${esc(m.simplified)}</span>
+                            <span class="pinyin">(${esc(m.pinyin)})</span>
+                            - ${m.definitions.slice(0, 2).map(x => esc(x)).join(', ')}
                             ${pinyinOptions}
                         </div>`;
                     });
@@ -820,9 +831,9 @@ let quizEntries = [];
             .then(data => {
                 if (data.success) {
                     const action = update ? 'Updated' : 'Added';
-                    let msg = `<p style="color: green;">${action}: ${data.entry.english} - ${data.entry.characters} (${data.entry.pinyin})</p>`;
+                    let msg = `<p style="color: green;">${action}: ${esc(data.entry.english)} - ${esc(data.entry.characters)} (${esc(data.entry.pinyin)})</p>`;
                     if (data.pinyin_pypinyin && data.pinyin_dict) {
-                        msg += `<p style="color: #666; font-size: 14px;">Note: pypinyin="${data.pinyin_pypinyin}" vs dictionary="${data.pinyin_dict}"</p>`;
+                        msg += `<p style="color: #666; font-size: 14px;">Note: pypinyin="${esc(data.pinyin_pypinyin)}" vs dictionary="${esc(data.pinyin_dict)}"</p>`;
                     }
                     document.getElementById('add-result').innerHTML = msg;
                     document.getElementById('add-english').value = '';
@@ -833,7 +844,7 @@ let quizEntries = [];
                 } else if (data.duplicate) {
                     // Show duplicate warning with options
                     const ex = data.existing;
-                    let msg = `<p style="color: orange;"><strong>⚠ Already exists:</strong> ${ex.english} - ${ex.characters} (${ex.pinyin || ''})</p>`;
+                    let msg = `<p style="color: orange;"><strong>⚠ Already exists:</strong> ${esc(ex.english)} - ${esc(ex.characters)} (${esc(ex.pinyin || '')})</p>`;
                     msg += `<p style="margin-top: 10px;">
                         <button class="secondary" onclick="addWord(true, false)">Add Anyway</button>
                         <button class="secondary" onclick="addWord(false, true)" style="margin-left: 10px;">Update Existing</button>
@@ -841,7 +852,7 @@ let quizEntries = [];
                     document.getElementById('add-result').innerHTML = msg;
                 } else {
                     document.getElementById('add-result').innerHTML =
-                        `<p style="color: red;">Error: ${data.error}</p>`;
+                        `<p style="color: red;">Error: ${esc(data.error)}</p>`;
                 }
             });
         }
@@ -871,11 +882,11 @@ let quizEntries = [];
                     let html = '';
                     data.vocab.forEach(v => {
                         const idx = v._index;  // Use original vocab index from backend
-                        let pinyinDisplay = v.pinyin || '';
+                        let pinyinDisplay = esc(v.pinyin || '');
                         // Store raw pinyin options for editing
                         const hasPinyinOptions = v.pinyin_pypinyin && v.pinyin_dict;
                         if (hasPinyinOptions) {
-                            pinyinDisplay += ` <span style="color: #999; font-size: 11px;">(dict: ${v.pinyin_dict} | pypinyin: ${v.pinyin_pypinyin})</span>`;
+                            pinyinDisplay += ` <span style="color: #999; font-size: 11px;">(dict: ${esc(v.pinyin_dict)} | pypinyin: ${esc(v.pinyin_pypinyin)})</span>`;
                         }
                         // Stats display (both quiz stats and character stats if present)
                         let statsDisplay = '';
@@ -893,17 +904,17 @@ let quizEntries = [];
                         }
                         const escEnglish = v.english.replace(/'/g, "\\'");
                         const tagsJson = JSON.stringify(v.tags || []);
-                        const editParams = `${idx}, '${v.characters || ''}', '${escEnglish}', '${v.pinyin || ''}', ${hasPinyinOptions ? `'${v.pinyin_dict}', '${v.pinyin_pypinyin}'` : 'null, null'}, '${v.audio || ''}', 'list', ${tagsJson}`;
+                        const editParams = `${idx}, '${esc(v.characters || '')}', '${esc(escEnglish)}', '${esc(v.pinyin || '')}', ${hasPinyinOptions ? `'${esc(v.pinyin_dict)}', '${esc(v.pinyin_pypinyin)}'` : 'null, null'}, '${esc(v.audio || '')}', 'list', ${tagsJson}`;
                         const focusStar = v.focus ? '★' : '☆';
                         const focusStyle = v.focus ? 'color: #f0ad4e;' : 'color: #ccc;';
                         html += `<div class="vocab-item" id="vocab-item-${idx}" onclick="openEditModal(${editParams})" style="cursor: pointer;">
                             <span onclick="event.stopPropagation(); toggleFocus(${idx})" style="cursor: pointer; font-size: 18px; ${focusStyle}" title="Toggle focus">${focusStar}</span>
                             <span>${idx + 1}.</span>
-                            <span class="vocab-english">${v.english}</span>
+                            <span class="vocab-english">${esc(v.english)}</span>
                             <span class="vocab-chars chinese">${makeCharsClickable(v.characters || '')}</span>
-                            <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
+                            <span class="vocab-pinyin pinyin">${esc(v.pinyin || '')}</span>
                             ${statsDisplay}
-                            ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">🔊</button>` : ''}
+                            ${v.audio ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${esc(v.audio)}')">🔊</button>` : ''}
                         </div>`;
                     });
 
@@ -1076,7 +1087,7 @@ let quizEntries = [];
                 polyphone: 'POLY', cedict_missing: 'MISSING'
             };
             return flags.map(f =>
-                `<span style="font-size: 10px; padding: 1px 5px; border-radius: 8px; background: ${colors[f] || '#999'}; color: white;">${labels[f] || f}</span>`
+                `<span style="font-size: 10px; padding: 1px 5px; border-radius: 8px; background: ${colors[f] || '#999'}; color: white;">${labels[f] || esc(f)}</span>`
             ).join(' ');
         }
 
@@ -1121,7 +1132,7 @@ let quizEntries = [];
             let html = '';
             syllables.forEach((syl, sIdx) => {
                 html += `<div class="curation-syllable" id="curation-syl-${sIdx}">
-                    <div class="curation-syllable-header"><strong>${syl.syllable}</strong></div>
+                    <div class="curation-syllable-header"><strong>${esc(syl.syllable)}</strong></div>
                     <div class="curation-tones-row">`;
 
                 syl.tones.forEach((t, tIdx) => {
@@ -1131,13 +1142,13 @@ let quizEntries = [];
                     // Action buttons
                     let actions = '';
                     if (t.status === 'accepted') {
-                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'reset')">Reset</button>`;
+                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${esc(syl.syllable)}', ${t.tone}, 'reset')">Reset</button>`;
                     } else if (t.status === 'espeak') {
-                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'reset')">Reset</button>`;
+                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${esc(syl.syllable)}', ${t.tone}, 'reset')">Reset</button>`;
                     } else {
-                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'accept')">Accept</button>`;
-                        actions += `<button class="curation-action-btn" onclick="event.stopPropagation(); playEspeakPreview('${syl.syllable}', ${t.tone})" title="Preview espeak-ng">▶es</button>`;
-                        actions += `<button class="curation-action-btn curation-espeak-btn" onclick="event.stopPropagation(); curationAction('${syl.syllable}', ${t.tone}, 'espeak')">Espeak</button>`;
+                        actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); curationAction('${esc(syl.syllable)}', ${t.tone}, 'accept')">Accept</button>`;
+                        actions += `<button class="curation-action-btn" onclick="event.stopPropagation(); playEspeakPreview('${esc(syl.syllable)}', ${t.tone})" title="Preview espeak-ng">▶es</button>`;
+                        actions += `<button class="curation-action-btn curation-espeak-btn" onclick="event.stopPropagation(); curationAction('${esc(syl.syllable)}', ${t.tone}, 'espeak')">Espeak</button>`;
                     }
 
                     // Alts toggle
@@ -1152,11 +1163,11 @@ let quizEntries = [];
                         altsPanel = `<div id="curation-alts-${id}" class="curation-alts-panel" style="display: none;">
                             ${t.alternatives.map(alt =>
                                 `<div class="curation-alt-row">
-                                    <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${alt.char}')" style="padding: 2px 6px; font-size: 11px;">▶</button>
-                                    <span class="chinese" style="font-size: 16px;">${alt.char}</span>
-                                    <span style="color: #666; font-size: 12px;">${alt.definition}</span>
+                                    <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${esc(alt.char)}')" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                                    <span class="chinese" style="font-size: 16px;">${esc(alt.char)}</span>
+                                    <span style="color: #666; font-size: 12px;">${esc(alt.definition)}</span>
                                     ${alt.polyphone ? '<span style="font-size: 10px; padding: 1px 4px; border-radius: 6px; background: #2196F3; color: white;">POLY</span>' : ''}
-                                    <button class="curation-action-btn" style="margin-left: auto;" onclick="event.stopPropagation(); replaceCurationChar('${syl.syllable}', ${t.tone}, '${alt.char}')">Use</button>
+                                    <button class="curation-action-btn" style="margin-left: auto;" onclick="event.stopPropagation(); replaceCurationChar('${esc(syl.syllable)}', ${t.tone}, '${esc(alt.char)}')">Use</button>
                                 </div>`
                             ).join('')}
                         </div>`;
@@ -1168,8 +1179,8 @@ let quizEntries = [];
                             ${statusIndicator(t.status)}
                         </div>
                         <div style="display: flex; align-items: center; gap: 4px;">
-                            <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${syl.syllable}', ${t.tone})" style="padding: 2px 6px; font-size: 11px;">▶</button>
-                            <span class="chinese" style="font-size: 20px;">${t.char}</span>
+                            <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${esc(syl.syllable)}', ${t.tone})" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                            <span class="chinese" style="font-size: 20px;">${esc(t.char)}</span>
                         </div>
                         ${badges}
                         <div class="curation-tone-actions">${altsToggle}${actions}</div>
@@ -1245,15 +1256,15 @@ let quizEntries = [];
             const item = document.getElementById(`vocab-item-${index}`);
 
             // Replace English with input
-            englishSpan.innerHTML = `<input type="text" id="edit-english-${index}" value="${english}" style="width: 150px;">`;
+            englishSpan.innerHTML = `<input type="text" id="edit-english-${index}" value="${esc(english)}" style="width: 150px;">`;
 
             // Replace pinyin with selector if options exist
             if (dictPinyin && pypinyinPinyin && dictPinyin !== pypinyinPinyin) {
                 const isDict = pinyin === dictPinyin;
                 pinyinSpan.innerHTML = `
                     <select id="edit-pinyin-${index}">
-                        <option value="${dictPinyin}" ${isDict ? 'selected' : ''}>dict: ${dictPinyin}</option>
-                        <option value="${pypinyinPinyin}" ${!isDict ? 'selected' : ''}>pypinyin: ${pypinyinPinyin}</option>
+                        <option value="${esc(dictPinyin)}" ${isDict ? 'selected' : ''}>dict: ${esc(dictPinyin)}</option>
+                        <option value="${esc(pypinyinPinyin)}" ${!isDict ? 'selected' : ''}>pypinyin: ${esc(pypinyinPinyin)}</option>
                     </select>`;
             }
 
@@ -1505,9 +1516,9 @@ let quizEntries = [];
             // Replace with input
             const currentEnglish = currentEntry.english || '';
             englishSpan.innerHTML = `
-                <input type="text" id="quiz-edit-english" value="${currentEnglish.replace(/"/g, '&quot;')}" style="width: 200px;">
+                <input type="text" id="quiz-edit-english" value="${esc(currentEnglish)}" style="width: 200px;">
                 <button class="secondary" onclick="quizSaveEdit()" style="padding: 2px 8px; font-size: 12px;">Save</button>
-                <button onclick="quizCancelEdit('${currentEnglish.replace(/'/g, "\\'")}')" style="padding: 2px 8px; font-size: 12px;">Cancel</button>
+                <button onclick="quizCancelEdit('${esc(currentEnglish.replace(/'/g, "\\'"))}')" style="padding: 2px 8px; font-size: 12px;">Cancel</button>
             `;
             document.getElementById('quiz-edit-english').focus();
         }
@@ -1670,9 +1681,9 @@ let quizEntries = [];
             quizTotal++;
             // Show full entry info: characters (pinyin) - English
             // Include both pypinyin and dict pinyin when they differ
-            let pinyinDisplay = currentEntry.pinyin || '';
+            let pinyinDisplay = esc(currentEntry.pinyin || '');
             if (currentEntry.pinyin_pypinyin && currentEntry.pinyin_dict) {
-                pinyinDisplay = `${currentEntry.pinyin} <span style="color: #999; font-size: 14px;">(dict: ${currentEntry.pinyin_dict} | pypinyin: ${currentEntry.pinyin_pypinyin})</span>`;
+                pinyinDisplay = `${esc(currentEntry.pinyin)} <span style="color: #999; font-size: 14px;">(dict: ${esc(currentEntry.pinyin_dict)} | pypinyin: ${esc(currentEntry.pinyin_pypinyin)})</span>`;
             }
             // Find alternative meanings from other entries with same characters or pinyin
             const altMeanings = quizAllEntries
@@ -1682,11 +1693,11 @@ let quizEntries = [];
                 ))
                 .map(e => e.english);
             const altDisplay = altMeanings.length > 0
-                ? ` <span style="color: #999; font-size: 14px;">(also: ${altMeanings.join('; ')})</span>`
+                ? ` <span style="color: #999; font-size: 14px;">(also: ${altMeanings.map(x => esc(x)).join('; ')})</span>`
                 : '';
 
             const entryInfo = `<span class="chinese">${makeCharsClickable(currentEntry.characters || '')}</span> ` +
-                `<span class="pinyin">(${pinyinDisplay})</span> - <span id="quiz-english-display">${currentEntry.english}</span>${altDisplay}`;
+                `<span class="pinyin">(${pinyinDisplay})</span> - <span id="quiz-english-display">${esc(currentEntry.english)}</span>${altDisplay}`;
 
             // Determine which stats to use based on quiz mode
             const useCharStats = quizUsesCharacters();
@@ -1730,7 +1741,7 @@ let quizEntries = [];
                 document.getElementById('quiz-play-audio').style.display = 'inline-block';
             }
 
-            const yourAnswer = `<span style="font-size: 13px; color: ${correct ? '#666' : '#c00'};"> (you said: "${answer}")</span>`;
+            const yourAnswer = `<span style="font-size: 13px; color: ${correct ? '#666' : '#c00'};"> (you said: "${esc(answer)}")</span>`;
             if (correct) {
                 quizCorrect++;
                 feedback.innerHTML = '✓ Correct!' + yourAnswer + ' ' + entryInfo + statsInfo + overrideBtn + editBtns;
@@ -1803,13 +1814,13 @@ let quizEntries = [];
                         let vocabHtml = '';
                         data.vocab.forEach(v => {
                             vocabHtml += `<div class="vocab-item">
-                                <span class="vocab-english">${v.english}</span>
+                                <span class="vocab-english">${esc(v.english)}</span>
                                 <span class="vocab-chars chinese">${makeCharsClickable(v.characters || '')}</span>
-                                <span class="vocab-pinyin pinyin">${v.pinyin || ''}</span>
+                                <span class="vocab-pinyin pinyin">${esc(v.pinyin || '')}</span>
                                 ${v.audio
-                                    ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${v.audio}')">&#128266;</button>`
+                                    ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${esc(v.audio)}')">&#128266;</button>`
                                     : (v.characters
-                                        ? `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${v.characters}')" style="opacity: 0.6;">&#128266;</button>`
+                                        ? `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${esc(v.characters)}')" style="opacity: 0.6;">&#128266;</button>`
                                         : '')}
                             </div>`;
                         });
@@ -1830,9 +1841,9 @@ let quizEntries = [];
                     data.dict.forEach(d => {
                         dictHtml += `<div class="vocab-item">
                             <span class="vocab-chars chinese">${makeCharsClickable(d.simplified)}</span>
-                            <span class="vocab-pinyin pinyin">${d.pinyin}</span>
-                            <span>${d.definitions.slice(0, 3).join(', ')}</span>
-                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${d.simplified}')" style="opacity: 0.6;">&#128266;</button>
+                            <span class="vocab-pinyin pinyin">${esc(d.pinyin)}</span>
+                            <span>${d.definitions.slice(0, 3).map(x => esc(x)).join(', ')}</span>
+                            <button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${esc(d.simplified)}')" style="opacity: 0.6;">&#128266;</button>
                         </div>`;
                     });
 
@@ -1890,15 +1901,15 @@ let quizEntries = [];
 
                     let pinyin = '', meaning = '', audioBtn = '';
                     if (vocabMatch) {
-                        pinyin = vocabMatch.pinyin || '';
-                        meaning = vocabMatch.english;
+                        pinyin = esc(vocabMatch.pinyin || '');
+                        meaning = esc(vocabMatch.english);
                         audioBtn = vocabMatch.audio
-                            ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${vocabMatch.audio}')">&#128266;</button>`
-                            : `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${char}')" style="opacity: 0.6;">&#128266;</button>`;
+                            ? `<button class="audio-btn" onclick="event.stopPropagation(); playAudio('${esc(vocabMatch.audio)}')">&#128266;</button>`
+                            : `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${esc(char)}')" style="opacity: 0.6;">&#128266;</button>`;
                     } else if (dictMatch) {
-                        pinyin = dictMatch.pinyin;
-                        meaning = dictMatch.definitions.slice(0, 3).join(', ');
-                        audioBtn = `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${char}')" style="opacity: 0.6;">&#128266;</button>`;
+                        pinyin = esc(dictMatch.pinyin);
+                        meaning = dictMatch.definitions.slice(0, 3).map(x => esc(x)).join(', ');
+                        audioBtn = `<button class="audio-btn" onclick="event.stopPropagation(); previewAudio('${esc(char)}')" style="opacity: 0.6;">&#128266;</button>`;
                     } else {
                         meaning = '(not found)';
                     }
@@ -1917,7 +1928,8 @@ let quizEntries = [];
         // Clickable characters utility
         function makeCharsClickable(text) {
             if (!text) return '';
-            return text.replace(/[\u4e00-\u9fff]/g,
+            // Escape non-CJK characters, then make CJK characters clickable
+            return esc(text).replace(/[\u4e00-\u9fff]/g,
                 char => `<span class="clickable-char" onclick="event.stopPropagation(); charLookup('${char}')">${char}</span>`);
         }
 
@@ -2257,12 +2269,12 @@ let quizEntries = [];
 
             let hintHtml = '';
             if (data.reveal.syllable) {
-                hintHtml = `<span class="pinyin">${data.reveal.syllable}</span>`;
+                hintHtml = `<span class="pinyin">${esc(data.reveal.syllable)}</span>`;
             } else if (data.reveal.tone !== undefined) {
                 const toneMarker = ['‾', '/', 'ˇ', '\\'][data.reveal.tone - 1] || '';
                 hintHtml = `<span class="tone-number">Tone ${data.reveal.tone}</span>`;
                 if (data.reveal.final) {
-                    hintHtml += ` <span class="final-hint">-${data.reveal.final}</span>`;
+                    hintHtml += ` <span class="final-hint">-${esc(data.reveal.final)}</span>`;
                 }
             } else if (data.ask === 'full') {
                 hintHtml = '🔊';
@@ -2306,7 +2318,7 @@ let quizEntries = [];
                 for (const opt of data.options) {
                     const btn = document.createElement('button');
                     btn.className = 'tone-option-btn';
-                    btn.innerHTML = `<span class="tone-num">${opt}</span><span class="tone-mark">${['‾', '/', 'ˇ', '\\'][opt - 1] || ''}</span>`;
+                    btn.innerHTML = `<span class="tone-num">${esc(opt)}</span><span class="tone-mark">${['‾', '/', 'ˇ', '\\'][opt - 1] || ''}</span>`;
                     btn.onclick = () => checkTonePracticeAnswer(opt);
                     optionsEl.appendChild(btn);
                 }
@@ -2393,7 +2405,7 @@ let quizEntries = [];
                 } else {
                     tonePracticeState.wrong++;
                     const tonedPinyin = addToneMark(data.syllable, data.tone);
-                    feedbackEl.innerHTML = `✗ Wrong. The answer was: <strong>${tonedPinyin}</strong> (${data.syllable}${data.tone})`;
+                    feedbackEl.innerHTML = `✗ Wrong. The answer was: <strong>${esc(tonedPinyin)}</strong> (${esc(data.syllable)}${data.tone})`;
                     feedbackEl.className = 'tone-practice-feedback wrong';
                 }
 
@@ -2474,7 +2486,7 @@ let quizEntries = [];
             for (let t = 1; t <= 4; t++) {
                 const isCorrect = t === tonePracticeState.current.tone;
                 const highlight = isCorrect ? ' highlight' : '';
-                refHtml += `<button class="tone-reference-btn${highlight}" onclick="playToneReferenceAudio('${syllable}', ${t})">${addToneMark(syllable, t)}</button>`;
+                refHtml += `<button class="tone-reference-btn${highlight}" onclick="playToneReferenceAudio('${esc(syllable)}', ${t})">${esc(addToneMark(syllable, t))}</button>`;
             }
             refHtml += '</div>';
 
@@ -2517,13 +2529,13 @@ let quizEntries = [];
                 .then(r => r.json())
                 .then(data => {
                     if (data.error) {
-                        document.getElementById('tone-curate-panel').innerHTML = `<p style="color: #c00;">${data.error}</p>`;
+                        document.getElementById('tone-curate-panel').innerHTML = `<p style="color: #c00;">${esc(data.error)}</p>`;
                         return;
                     }
                     renderToneCuratePanel(data);
                 })
                 .catch(err => {
-                    document.getElementById('tone-curate-panel').innerHTML = `<p style="color: #c00;">Error: ${err.message}</p>`;
+                    document.getElementById('tone-curate-panel').innerHTML = `<p style="color: #c00;">Error: ${esc(err.message)}</p>`;
                 });
         }
 
@@ -2531,7 +2543,7 @@ let quizEntries = [];
             const panelEl = document.getElementById('tone-curate-panel');
             const currentTone = tonePracticeState.current?.tone;
 
-            let html = `<div class="curate-panel-header">Curate: <strong>${data.syllable}</strong></div>`;
+            let html = `<div class="curate-panel-header">Curate: <strong>${esc(data.syllable)}</strong></div>`;
             html += '<div class="curate-panel-tones">';
 
             data.tones.forEach((t, idx) => {
@@ -2541,11 +2553,11 @@ let quizEntries = [];
                 // Action buttons
                 let actions = '';
                 if (t.status === 'accepted' || t.status === 'espeak') {
-                    actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); toneCurateAction('${data.syllable}', ${t.tone}, 'reset')">Reset</button>`;
+                    actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); toneCurateAction('${esc(data.syllable)}', ${t.tone}, 'reset')">Reset</button>`;
                 } else {
-                    actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); toneCurateAction('${data.syllable}', ${t.tone}, 'accept')">Accept</button>`;
-                    actions += `<button class="curation-action-btn" onclick="event.stopPropagation(); playEspeakPreview('${data.syllable}', ${t.tone})" title="Preview espeak-ng">▶es</button>`;
-                    actions += `<button class="curation-action-btn curation-espeak-btn" onclick="event.stopPropagation(); toneCurateAction('${data.syllable}', ${t.tone}, 'espeak')">Espeak</button>`;
+                    actions = `<button class="curation-action-btn" onclick="event.stopPropagation(); toneCurateAction('${esc(data.syllable)}', ${t.tone}, 'accept')">Accept</button>`;
+                    actions += `<button class="curation-action-btn" onclick="event.stopPropagation(); playEspeakPreview('${esc(data.syllable)}', ${t.tone})" title="Preview espeak-ng">▶es</button>`;
+                    actions += `<button class="curation-action-btn curation-espeak-btn" onclick="event.stopPropagation(); toneCurateAction('${esc(data.syllable)}', ${t.tone}, 'espeak')">Espeak</button>`;
                 }
 
                 const altsCount = (t.alternatives || []).length;
@@ -2558,11 +2570,11 @@ let quizEntries = [];
                     altsPanel = `<div id="curation-alts-tc-${idx}" class="curation-alts-panel" style="display: none;">
                         ${t.alternatives.map(alt =>
                             `<div class="curation-alt-row">
-                                <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${alt.char}')" style="padding: 2px 6px; font-size: 11px;">▶</button>
-                                <span class="chinese" style="font-size: 16px;">${alt.char}</span>
-                                <span style="color: #666; font-size: 12px;">${alt.definition}</span>
+                                <button class="audio-btn" onclick="event.stopPropagation(); playCurationPreview('${esc(alt.char)}')" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                                <span class="chinese" style="font-size: 16px;">${esc(alt.char)}</span>
+                                <span style="color: #666; font-size: 12px;">${esc(alt.definition)}</span>
                                 ${alt.polyphone ? '<span style="font-size: 10px; padding: 1px 4px; border-radius: 6px; background: #2196F3; color: white;">POLY</span>' : ''}
-                                <button class="curation-action-btn" style="margin-left: auto;" onclick="event.stopPropagation(); toneCurateReplace('${data.syllable}', ${t.tone}, '${alt.char}')">Use</button>
+                                <button class="curation-action-btn" style="margin-left: auto;" onclick="event.stopPropagation(); toneCurateReplace('${esc(data.syllable)}', ${t.tone}, '${esc(alt.char)}')">Use</button>
                             </div>`
                         ).join('')}
                     </div>`;
@@ -2576,8 +2588,8 @@ let quizEntries = [];
                         ${statusIndicator(t.status)}
                     </div>
                     <div style="display: flex; align-items: center; gap: 4px;">
-                        <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${data.syllable}', ${t.tone})" style="padding: 2px 6px; font-size: 11px;">▶</button>
-                        <span class="chinese" style="font-size: 20px;">${t.char}</span>
+                        <button class="audio-btn" onclick="event.stopPropagation(); playCurationAudio('${esc(data.syllable)}', ${t.tone})" style="padding: 2px 6px; font-size: 11px;">▶</button>
+                        <span class="chinese" style="font-size: 20px;">${esc(t.char)}</span>
                     </div>
                     ${badges}
                     <div class="curation-tone-actions">${altsToggle}${actions}</div>
@@ -2692,10 +2704,10 @@ let quizEntries = [];
 
             let sourceHtml = '';
             if (source.textbook) {
-                sourceHtml += `<div style="font-size: 13px; color: #666; margin-bottom: 5px;">📚 ${source.textbook}</div>`;
+                sourceHtml += `<div style="font-size: 13px; color: #666; margin-bottom: 5px;">📚 ${esc(source.textbook)}</div>`;
             }
-            sourceHtml += `<strong>Lesson ${source.lesson || '?'}</strong>: ${source.title || 'Untitled'}`;
-            sourceHtml += `<br><small style="color: #888;">Extracted: ${source.extracted_date || 'Unknown'} via ${source.extracted_by || 'unknown'}</small>`;
+            sourceHtml += `<strong>Lesson ${esc(source.lesson || '?')}</strong>: ${esc(source.title || 'Untitled')}`;
+            sourceHtml += `<br><small style="color: #888;">Extracted: ${esc(source.extracted_date || 'Unknown')} via ${esc(source.extracted_by || 'unknown')}</small>`;
 
             // Show what content is available
             const features = [];
@@ -2781,11 +2793,11 @@ let quizEntries = [];
                             <div style="padding-left: 8px;">
                                 <label style="display: block; padding: 4px 0;">
                                     <input type="radio" name="${radioName}" value="textbook" class="conflict-action-radio" data-index="${i}" checked>
-                                    Textbook: <strong>${item.pinyin}</strong>
+                                    Textbook: <strong>${esc(item.pinyin)}</strong>
                                 </label>
                                 <label style="display: block; padding: 4px 0;">
                                     <input type="radio" name="${radioName}" value="dictionary" class="conflict-action-radio" data-index="${i}">
-                                    Dictionary: <strong>${expectedPinyin}</strong>
+                                    Dictionary: <strong>${esc(expectedPinyin)}</strong>
                                 </label>
                                 <label style="display: block; padding: 4px 0;">
                                     <input type="radio" name="${radioName}" value="both" class="conflict-action-radio" data-index="${i}">
@@ -2801,7 +2813,7 @@ let quizEntries = [];
                 } else if (item.status === 'sandhi' && item.note) {
                     extraInfo = `
                         <div style="font-size: 12px; margin-top: 5px; padding: 8px; background: #e8f5e9; border-radius: 4px;">
-                            <em>${item.note}</em> — Citation form: ${item.dict_pinyin}
+                            <em>${esc(item.note)}</em> — Citation form: ${esc(item.dict_pinyin)}
                         </div>
                     `;
                 } else if (item.status === 'duplicate' && item.existing) {
@@ -2816,7 +2828,7 @@ let quizEntries = [];
                             <div style="display: flex; align-items: center; padding: 4px 0; ${j > 0 ? 'border-top: 1px solid #e0e0e0; margin-top: 4px;' : ''}">
                                 <label style="flex: 1; ${diffClass}">
                                     <input type="radio" name="${radioName}" value="replace-${ex.index}" class="dup-action-radio" data-index="${i}" data-replace-index="${ex.index}">
-                                    Replace: ${ex.pinyin} — ${ex.english}
+                                    Replace: ${esc(ex.pinyin)} — ${esc(ex.english)}
                                 </label>
                             </div>
                         `;
@@ -2825,7 +2837,7 @@ let quizEntries = [];
                     extraInfo = `
                         <div style="font-size: 12px; margin-top: 5px; padding: 8px; background: #f5f5f5; border-radius: 4px;">
                             <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #ddd;">
-                                <strong>From textbook:</strong> ${item.pinyin} — ${item.english}
+                                <strong>From textbook:</strong> ${esc(item.pinyin)} — ${esc(item.english)}
                             </div>
                             <div style="margin-bottom: 6px; color: #666;">In your vocabulary:</div>
                             <div style="margin-bottom: 8px; padding-left: 8px;">
@@ -2851,18 +2863,18 @@ let quizEntries = [];
                     <div style="display: flex; align-items: flex-start; padding: 12px; border-bottom: 1px solid #eee; ${!canSelect ? 'opacity: 0.5;' : ''}">
                         <input type="checkbox" class="import-checkbox" data-index="${i}" ${canSelect ? '' : 'disabled'} ${isCheckedByDefault ? 'checked' : ''} onchange="updateImportCount()" style="margin-right: 12px; margin-top: 4px; ${showMainCheckbox ? '' : 'visibility: hidden;'}">
                         <div style="flex: 1;">
-                            <span class="chinese" style="font-size: 20px;">${item.characters}</span>
-                            <span class="pinyin import-pinyin-display" data-index="${i}" style="margin-left: 10px;">${item.pinyin || '(no pinyin)'}</span>
-                            <span class="import-english-display" data-index="${i}" style="margin-left: 15px; color: #666;">${item.english}</span>
+                            <span class="chinese" style="font-size: 20px;">${esc(item.characters)}</span>
+                            <span class="pinyin import-pinyin-display" data-index="${i}" style="margin-left: 10px;">${esc(item.pinyin || '(no pinyin)')}</span>
+                            <span class="import-english-display" data-index="${i}" style="margin-left: 15px; color: #666;">${esc(item.english)}</span>
                             <span style="float: right; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: ${statusColor}; color: white;">${statusBadge}</span>
                             <button onclick="toggleImportEdit(${i})" style="float: right; margin-right: 8px; font-size: 11px; padding: 2px 8px; border: 1px solid #999; border-radius: 4px; background: #f0f0f0; color: #333; cursor: pointer;">Edit</button>
                             <div class="import-edit-panel" data-index="${i}" style="display: none; margin-top: 8px; padding: 8px; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 4px;">
                                 <div style="display: flex; gap: 10px; align-items: center;">
                                     <label style="font-size: 12px; color: #666;">Pinyin:
-                                        <input type="text" class="import-edit-pinyin" data-index="${i}" value="${(item.pinyin || '').replace(/"/g, '&quot;')}" style="width: 150px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+                                        <input type="text" class="import-edit-pinyin" data-index="${i}" value="${esc(item.pinyin || '')}" style="width: 150px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
                                     </label>
                                     <label style="font-size: 12px; color: #666;">English:
-                                        <input type="text" class="import-edit-english" data-index="${i}" value="${(item.english || '').replace(/"/g, '&quot;')}" style="width: 200px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
+                                        <input type="text" class="import-edit-english" data-index="${i}" value="${esc(item.english || '')}" style="width: 200px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px;">
                                     </label>
                                     <button onclick="applyImportEdit(${i})" style="font-size: 11px; padding: 3px 10px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer;">Apply</button>
                                     <button onclick="toggleImportEdit(${i})" style="font-size: 11px; padding: 3px 10px; border: 1px solid #ccc; border-radius: 3px; background: #fff; cursor: pointer;">Cancel</button>
@@ -3324,9 +3336,9 @@ let quizEntries = [];
 
                 // Add audio button if line has Chinese text
                 const audioBtn = line.chinese
-                    ? `<button class="audio-btn small" onclick="readConversationLine('${line.chinese.replace(/'/g, "\\'")}')">🔊</button>`
+                    ? `<button class="audio-btn small" onclick="readConversationLine('${esc(line.chinese.replace(/'/g, "\\'"))}')">🔊</button>`
                     : '';
-                div.innerHTML = `<span class="dialogue-preview-speaker">${line.speaker}:</span> <span class="dialogue-preview-text">${text}</span> ${audioBtn}`;
+                div.innerHTML = `<span class="dialogue-preview-speaker">${esc(line.speaker)}:</span> <span class="dialogue-preview-text">${esc(text)}</span> ${audioBtn}`;
                 previewLines.appendChild(div);
             });
 
@@ -3457,28 +3469,28 @@ let quizEntries = [];
             if (isCorrection) {
                 html += `<div class="conversation-message-label">✓ Correct answer:</div>`;
             }
-            html += `<div class="conversation-message-speaker">${line.speaker}</div>`;
+            html += `<div class="conversation-message-speaker">${esc(line.speaker)}</div>`;
 
             // User messages always show all info; partner messages respect display mode
             if (isUser && !isCorrection) {
-                html += `<div class="conversation-message-chinese">${line.chinese}</div>`;
+                html += `<div class="conversation-message-chinese">${esc(line.chinese)}</div>`;
                 if (line.pinyin) {
-                    html += `<div class="conversation-message-pinyin">${line.pinyin}</div>`;
+                    html += `<div class="conversation-message-pinyin">${esc(line.pinyin)}</div>`;
                 }
                 if (line.english) {
-                    html += `<div class="conversation-message-english">${line.english}</div>`;
+                    html += `<div class="conversation-message-english">${esc(line.english)}</div>`;
                 }
             } else if (isCorrection) {
                 // Correction shows full info plus audio
-                html += `<div class="conversation-message-chinese">${line.chinese}</div>`;
+                html += `<div class="conversation-message-chinese">${esc(line.chinese)}</div>`;
                 if (line.pinyin) {
-                    html += `<div class="conversation-message-pinyin">${line.pinyin}</div>`;
+                    html += `<div class="conversation-message-pinyin">${esc(line.pinyin)}</div>`;
                 }
                 if (line.english) {
-                    html += `<div class="conversation-message-english">${line.english}</div>`;
+                    html += `<div class="conversation-message-english">${esc(line.english)}</div>`;
                 }
                 if (line.chinese) {
-                    html += `<button class="audio-btn small" onclick="readConversationLine('${line.chinese.replace(/'/g, "\\'")}')">🔊</button>`;
+                    html += `<button class="audio-btn small" onclick="readConversationLine('${esc(line.chinese.replace(/'/g, "\\'"))}')">🔊</button>`;
                 }
             } else {
                 // Partner message - respect display mode
@@ -3487,17 +3499,17 @@ let quizEntries = [];
                 const showEnglish = displayMode === 'all' || displayMode === 'chinese_english';
 
                 if (showChinese && line.chinese) {
-                    html += `<div class="conversation-message-chinese">${line.chinese}</div>`;
+                    html += `<div class="conversation-message-chinese">${esc(line.chinese)}</div>`;
                 }
                 if (showPinyin && line.pinyin) {
-                    html += `<div class="conversation-message-pinyin">${line.pinyin}</div>`;
+                    html += `<div class="conversation-message-pinyin">${esc(line.pinyin)}</div>`;
                 }
                 if (showEnglish && line.english) {
-                    html += `<div class="conversation-message-english">${line.english}</div>`;
+                    html += `<div class="conversation-message-english">${esc(line.english)}</div>`;
                 }
                 // Add read button for partner messages
                 if (line.chinese) {
-                    html += `<button class="audio-btn small" onclick="readConversationLine('${line.chinese.replace(/'/g, "\\'")}')">🔊</button>`;
+                    html += `<button class="audio-btn small" onclick="readConversationLine('${esc(line.chinese.replace(/'/g, "\\'"))}')">🔊</button>`;
                 }
             }
 
@@ -3596,14 +3608,14 @@ let quizEntries = [];
             feedbackEl.className = 'conversation-feedback ' + (correct ? 'correct' : 'incorrect');
 
             let html = `<div class="conversation-feedback-title">${correct ? '✓ Correct!' : '✗ Not quite'}</div>`;
-            html += `<div class="conversation-feedback-text">${feedback}</div>`;
+            html += `<div class="conversation-feedback-text">${esc(feedback)}</div>`;
 
             if (!correct && expectedLine) {
                 html += `<div class="conversation-feedback-expected">`;
-                html += `<strong>Expected:</strong> ${expectedLine.chinese}`;
-                if (expectedLine.pinyin) html += ` (${expectedLine.pinyin})`;
+                html += `<strong>Expected:</strong> ${esc(expectedLine.chinese)}`;
+                if (expectedLine.pinyin) html += ` (${esc(expectedLine.pinyin)})`;
                 if (expectedLine.chinese) {
-                    html += ` <button class="audio-btn small" onclick="readConversationLine('${expectedLine.chinese.replace(/'/g, "\\'")}')">🔊</button>`;
+                    html += ` <button class="audio-btn small" onclick="readConversationLine('${esc(expectedLine.chinese.replace(/'/g, "\\'"))}')">🔊</button>`;
                 }
                 html += `</div>`;
             }
@@ -3640,7 +3652,7 @@ let quizEntries = [];
 
             const feedbackEl = document.getElementById('conversation-feedback');
             feedbackEl.className = 'conversation-feedback';
-            feedbackEl.innerHTML = `<div class="conversation-feedback-title">💡 Hint</div><div class="conversation-feedback-text">${hint}</div>`;
+            feedbackEl.innerHTML = `<div class="conversation-feedback-title">💡 Hint</div><div class="conversation-feedback-text">${esc(hint)}</div>`;
             feedbackEl.style.display = 'block';
         }
 
