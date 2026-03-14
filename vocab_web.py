@@ -557,9 +557,13 @@ def api_reset_stats():
 @app.route('/api/audio')
 def api_audio():
     path = request.args.get('path', '')
-    if os.path.exists(path):
+    # Validate that the resolved path is within the audio directory
+    real_path = os.path.realpath(path)
+    if not real_path.startswith(os.path.realpath(str(AUDIO_DIR)) + os.sep):
+        return '', 403
+    if os.path.exists(real_path):
         from flask import send_file
-        return send_file(path, mimetype='audio/mpeg')
+        return send_file(real_path, mimetype='audio/mpeg')
     return '', 404
 
 
@@ -1556,6 +1560,17 @@ IMPORT_DIR = os.path.join(DATA_DIR, 'data', 'import')
 SCHEMA_PATH = os.path.join(DATA_DIR, 'schemas', 'extraction_schema.json')
 
 
+def _validate_lesson_id(lesson_id):
+    """Validate lesson_id to prevent path traversal. Returns None if invalid."""
+    if not lesson_id or '..' in lesson_id or os.sep in lesson_id.replace('/', ''):
+        return None
+    # Also check the resolved path stays within IMPORT_DIR
+    resolved = os.path.realpath(os.path.join(IMPORT_DIR, lesson_id))
+    if not resolved.startswith(os.path.realpath(IMPORT_DIR) + os.sep):
+        return None
+    return resolved
+
+
 def load_extraction_schema():
     """Load the extraction JSON schema."""
     if os.path.exists(SCHEMA_PATH):
@@ -1771,7 +1786,11 @@ def api_import_preview():
     if not lesson_id:
         return jsonify({'error': 'lesson parameter required'}), 400
 
-    extracted_path = os.path.join(IMPORT_DIR, lesson_id, 'extracted.json')
+    lesson_path = _validate_lesson_id(lesson_id)
+    if not lesson_path:
+        return jsonify({'error': 'Invalid lesson ID'}), 400
+
+    extracted_path = os.path.join(lesson_path, 'extracted.json')
 
     if not os.path.exists(extracted_path):
         return jsonify({'error': f'Extraction not found: {lesson_id}'}), 404
@@ -2043,7 +2062,10 @@ def api_conversation_dialogue():
     if not lesson_id:
         return jsonify({'error': 'Missing lesson parameter'}), 400
 
-    lesson_path = os.path.join(IMPORT_DIR, lesson_id)
+    lesson_path = _validate_lesson_id(lesson_id)
+    if not lesson_path:
+        return jsonify({'error': 'Invalid lesson ID'}), 400
+
     lesson_data = _load_lesson_with_dialogues(lesson_path)
 
     if not lesson_data:
@@ -2101,7 +2123,9 @@ def api_conversation_turn():
     structure_mode = validation.get('structure', 'meaning')  # 'meaning' or 'grammar'
 
     # Load dialogue
-    lesson_path = os.path.join(IMPORT_DIR, lesson_id)
+    lesson_path = _validate_lesson_id(lesson_id)
+    if not lesson_path:
+        return jsonify({'error': 'Invalid lesson ID'}), 400
     lesson_data = _load_lesson_with_dialogues(lesson_path)
     if not lesson_data:
         return jsonify({'error': 'Lesson not found'}), 404
@@ -2260,4 +2284,4 @@ Keep feedback concise (1-2 sentences). Be encouraging.
 if __name__ == '__main__':
     print("Starting Mandarin Vocabulary Web App...")
     print("Open http://localhost:5000 in your browser")
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)
